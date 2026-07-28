@@ -108,9 +108,9 @@ $ atarva genotype --help
 which gives the following output
 
 ```
-usage: atarva genotype [-h] -f <FILE> -b <FILE> [<FILE> ...] -r <FILE> [-o <FILE>] [--aln-format <STR>] [--rna] [--instability] [--contigs <STR> [<STR> ...]] [--karyotype <STR> [<STR> ...]] [-q <INT>] [--min-reads <INT>] [--max-reads <INT>]
-                       [--flank <INT>] [--snp-dist <INT>] [--snp-count <INT>] [--snp-qual <INT>] [--snp-read <FLOAT>] [--phasing-read <FLOAT>] [--haplotag <STR>] [--meth-prob <FLOAT>] [--methviz] [--read-wise] [--locus-wise] [--decompose]
-                       [-t <INT>] [-log] [-v]
+usage: atarva-ext genotype [-h] -f <FILE> -b <FILE> [<FILE> ...] -r <FILE> [-o <FILE>] [--aln-format <STR>] [--rna] [--instability] [--contigs <STR> [<STR> ...]] [--karyotype <STR> [<STR> ...]] [-q <INT>] [--min-reads <INT>]
+                           [--max-reads <INT>] [--flank <INT>] [--snp-dist <INT>] [--snp-count <INT>] [--snp-qual <INT>] [--snp-read <FLOAT>] [--phasing-read <FLOAT>] [--haplotag <STR>] [--meth-prob <FLOAT>] [--methviz] [--read-wise]
+                           [--locus-wise] [--decompose] [-t <INT>] [-log] [-v]
 
 Tandem Repeat Genotyper
 
