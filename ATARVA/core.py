@@ -14,12 +14,10 @@ from ATARVA.merge import merge_parser
 from ATARVA.version import __version__
 
 contact = """\nFor queries or suggestions, please contact:
-Divya Tej Sowpati - tej at csirccmb dot org
-Abishek Kumar S - abishekks at csirccmb dot org
 Akshay Kumar Avvaru - avvaruakshay at gmail dot com"""
 
 def main():
-    parser = ap.ArgumentParser(prog="atarva",
+    parser = ap.ArgumentParser(prog="atarva-ext",
                                add_help=False,
                                formatter_class=ap.RawTextHelpFormatter)
 
@@ -39,7 +37,7 @@ def main():
 
     if args.command is None:
         print("Usage:")
-        print("    atarva [OPTIONS] <COMMAND>\n")
+        print("    atarva-ext [OPTIONS] <COMMAND>\n")
         print("Commands:")
         for name, sp in subparsers.choices.items():
             print(f"  {name:<9} {sp.description}")
