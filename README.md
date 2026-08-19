@@ -127,7 +127,7 @@ Optional arguments:
                         output VCF file [default: stdout]
   --aln-format <STR>    alignment format [cram | bam | sam] [default: bam]
   --rna                 if the input alignment data is RNA-seq [default: False]
-  --instability         if instability metrics should be calculated and written to VCF [default: False]
+  --instability         generates read level allele information for each locus as TSV [default: False]
   --contigs <STR> [<STR> ...]
                         contigs to genotype e.g. chr1 chr12 [default: all]
   --karyotype <STR> [<STR> ...]
