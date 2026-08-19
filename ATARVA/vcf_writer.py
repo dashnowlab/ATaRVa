@@ -21,7 +21,7 @@ def vcf_writer(out, bam, bam_name):
     vcf_header = pysam.VariantHeader()
 
     # command
-    vcf_header.add_line(f"##command=ATaRVa_0.6.0 {' '.join(sys.argv)}")
+    vcf_header.add_line(f"##command=ATaRVa_0.7.1+ext {' '.join(sys.argv)}")
 
     for contig in bam.header['SQ']:
         vcf_header.contigs.add(contig['SN'], length=contig['LN'])
