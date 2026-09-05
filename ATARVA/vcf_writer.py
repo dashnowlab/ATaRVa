@@ -56,6 +56,7 @@ def vcf_writer(out, bam, bam_name):
     vcf_header.formats.add("MR", number='.', type="Integer",  description="Number of informative reads for methylation scoring for each allele")
     vcf_header.formats.add("DS", number='A', type="String",   description="Motif decomposed sequence for each allele sequence")
     vcf_header.formats.add("MV", number='.', type="String",   description="Base methylation score encoded for visualization for each allele")
+    vcf_header.formats.add("PS", number='1', type="String",   description="Phase Set assigned in the phasing process if available in alignment file")
 
     out.write(str(vcf_header))
 
@@ -132,7 +133,7 @@ def write_homozygous_call(cooper, locus_key):
     motif_copy = allele_length // locus.motif_length
 
     # --- decomposed sequence ---
-    if cooper.args.decompose and is_seq_alt and locus.motif_length <= 10:
+    if cooper.args.decompose and locus.motif_length <= 10:
         decomposed_seq = locus_data.gt_decomp_seqs[0] if locus_data.gt_decomp_seqs[0] else None
     else: decomposed_seq = '.'
 
@@ -212,9 +213,9 @@ def write_heterozygous_call(cooper, locus_key):
     meth_reads  = []
     meth_viztag = []
     for hap_methyl in locus_data.hap_meth_data:
-        meth_prob.append(str(hap_methyl[0]) if hap_methyl[0] is not None else '.') #methylation probability
+        meth_prob.append(str(hap_methyl[0])  if hap_methyl[0] is not None else '.') #methylation probability
         meth_reads.append(str(hap_methyl[1]) if hap_methyl[1] is not None else '.') #number of methylated reads
-        meth_viztag.append(hap_methyl[2] if hap_methyl[2] is not None else '.') #methylation visual encoding
+        meth_viztag.append(hap_methyl[2]     if hap_methyl[2] is not None else '.') #methylation visual encoding
 
     if locus_data.gt_aseqs[0] == locus_data.gt_aseqs[1]: # if the two alleles are the same, make it a homozygous call
         allele = locus_data.gt_aseqs[0]
@@ -231,24 +232,29 @@ def write_heterozygous_call(cooper, locus_key):
 
     else:
         if ref_allele in locus_data.gt_aseqs:
-            ref_index = 0; allele_index = 1
             if locus_data.gt_aseqs[0] != ref_allele:
-                allele_index = 0
-                ref_index = 1
-            allele = locus_data.gt_aseqs[allele_index]
+                allele_index = 0; ref_index = 1
+                GT = '1|0'
+                allele = locus_data.gt_aseqs[allele_index]
+                allele_length = 0 if allele == '<DEL>' else len(allele)
+                length_GT += f'{allele_length},{ref_alen}'
+                units_GT += f'{allele_length//locus.motif_length},{ref_units}'
+            else:
+                ref_index = 0; allele_index = 1
+                GT = '0|1'
+                allele = locus_data.gt_aseqs[allele_index]
+                allele_length = 0 if allele == '<DEL>' else len(allele)
+                length_GT += f'{ref_alen},{allele_length}'
+                units_GT += f'{ref_units},{allele_length//locus.motif_length}'
             AC = 1
-            GT = '0|1'
-            allele_length = 0 if allele == '<DEL>' else len(allele)
-            length_GT += f'{ref_alen},{allele_length}'
-            units_GT += f'{ref_units},{allele_length//locus.motif_length}'
 
-            SD = f'{len(locus_data.hap_read_sets[ref_index])},{len(locus_data.hap_read_sets[allele_index])}'
             ALT = allele
             if ref_index == 1:
                 meth_prob = meth_prob[::-1] # reverse the meth_prob to keep the order consistent with GT
                 meth_reads = meth_reads[::-1]
                 meth_viztag = meth_viztag[::-1]
-            allele_range = f'{locus_data.gt_arange[ref_index]},{locus_data.gt_arange[allele_index]}'
+            SD = f'{len(locus_data.hap_read_sets[0])},{len(locus_data.hap_read_sets[1])}'
+            allele_range = f'{locus_data.gt_arange[0]},{locus_data.gt_arange[1]}'
         else:
             AC = '1,1'
             GT = '1|2'
@@ -293,6 +299,12 @@ def write_heterozygous_call(cooper, locus_key):
             f':{decomposed_seqs}'
             f':{MV}'
         )
+    if locus_data.hap_category == 3 and locus_data.is_phased:
+        PS = list(set(locus_data.read_haplotag_ps.values())) if locus_data.read_haplotag_ps is not None else '.'
+        if PS != '.':
+            PS = PS[0]
+        FORMAT += ':PS'
+        SAMPLE += f':{PS}'
 
     print(*[cooper.chrom, locus.start + 1, '.',  ref_allele, ALT, 0, 'PASS', INFO, FORMAT, SAMPLE], file=cooper.outhandle, sep='\t')
 

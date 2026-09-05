@@ -7,12 +7,13 @@ from tqdm import tqdm
 from sortedcontainers import SortedList
 from collections import deque
 
+from ATARVA.decompose import motif_decomposition
 from ATARVA.structures        import ReadLocusInfo, LocusInfo, ReadInfo, LocusVariation, ExtendedRead
 from ATARVA.vcf_writer        import vcf_writer, write_homozygous_call, write_heterozygous_call, write_fail_call
 from ATARVA.operation_utils   import clean_eqsign_readseq
 from ATARVA.cstag_utils       import parse_cstag
 from ATARVA.cigar_utils       import parse_cigar
-from ATARVA.sub_operation_utils import mm_tag_extract, calculate_methylation, clamp_zero
+from ATARVA.sub_operation_utils import mm_tag_extract, calculate_methylation, clamp_zero, alt_sequence
 from ATARVA.locus_utils       import process_locus
 from ATARVA.consensus         import consensus_seq_poa
 from ATARVA.genotype_utils    import analyse_genotype
@@ -367,7 +368,7 @@ class Cooper:
                 # --- haplotag extraction ---
                 read.haplotag = [False, None]
                 if self.args.haplotag and read.has_tag(self.args.haplotag):
-                    read.haplotag = [True, read.get_tag(self.args.haplotag)]
+                    read.haplotag = [True, read.get_tag(self.args.haplotag), read.get_tag('PS') if read.has_tag('PS') else None]
 
                 # --- methylation extraction ---
                 mod_bases = ()
@@ -397,6 +398,8 @@ class Cooper:
                             ldata.read_alens[read.index]     = [locus_read_info.halen, locus_read_info.alen]
                             ldata.read_aseqs[read.index]     = locus_read_info.seq
                             ldata.read_haplotags[read.index] = read.haplotag[1]
+                            if self.args.haplotag and read.has_tag(self.args.haplotag):
+                                if read.haplotag[2] is not None: ldata.read_haplotag_ps[read.index] = read.haplotag[2]
                             # remove lowest quality read
                             if ldata.min_qual_read in ldata.reads:
                                 ldata.reads.remove(ldata.min_qual_read)
@@ -418,6 +421,8 @@ class Cooper:
                         ldata.read_alens[read.index]     = [locus_read_info.halen, locus_read_info.alen]
                         ldata.read_aseqs[read.index]     = locus_read_info.seq
                         ldata.read_haplotags[read.index] = read.haplotag[1]
+                        if self.args.haplotag and read.has_tag(self.args.haplotag):
+                            if read.haplotag[2] is not None: ldata.read_haplotag_ps[read.index] = read.haplotag[2]
                         if ldata.min_read_qual > read.mean_qual:
                             ldata.min_read_qual = read.mean_qual
                             ldata.min_qual_read = read.index
@@ -478,20 +483,23 @@ class Cooper:
             elif max_allele == self.ref.fetch(locus.chrom, locus.start, locus.end):
                 # homozygous reference genotype
                 ALT = '.'
+                decomp_seq, nonrep_fraction = motif_decomposition(max_allele, locus.motif_length)
+                ref_allele = self.ref.fetch(locus.chrom, locus.start, locus.end)
+                meth_data  = calculate_methylation(locus_data.reads, locus_data.read_methylation, ref_allele)
                 locus_data.gt_alens  = (locus.length, locus.length)
                 locus_data.gt_arange = f'{locus.length}-{locus.length},{locus.length}-{locus.length}'
                 locus_data.gt_aseqs  = (max_allele, max_allele)
-                ref_allele = self.ref.fetch(locus.chrom, locus.start, locus.end)
-                meth_data = calculate_methylation(locus_data.reads, locus_data.read_methylation, ref_allele)
-                locus_data.hap_meth_data = (meth_data, meth_data)
+                locus_data.hap_meth_data  = (meth_data, meth_data)
+                locus_data.gt_decomp_seqs = (decomp_seq, decomp_seq)
 
             else:
-                ALT = max_allele
-                locus_data.gt_alens      = (len(ALT), len(ALT))
-                locus_data.gt_arange     = f'{len(ALT)}-{len(ALT)}'
-                locus_data.gt_aseqs      = (ALT, ALT)
+                ALT, allele_length, decomp_seq, is_repetitive = alt_sequence(locus_data.read_aseqs, locus_data.reads, locus.motif_length)
                 meth_data = calculate_methylation(locus_data.reads, locus_data.read_methylation, ALT)
-                locus_data.hap_meth_data = (meth_data, meth_data)
+                locus_data.gt_alens       = (len(ALT), len(ALT))
+                locus_data.gt_arange      = f'{len(ALT)}-{len(ALT)}'
+                locus_data.gt_aseqs       = (ALT, ALT)
+                locus_data.hap_meth_data  = (meth_data, meth_data)
+                locus_data.gt_decomp_seqs = (decomp_seq, decomp_seq)
 
             write_homozygous_call(self, locus_key)
             locus_data.is_genotyped = 1
@@ -506,32 +514,46 @@ class Cooper:
 
         # --- category 3 — phased / heterozygous ---
         elif locus_data.hap_category == 3:
-            genotypes    = []
             allele_count = {}
-            ALT_seqs     = []
             phased_reads = []
             alen_lists   = []
 
-            for hap_reads in locus_data.hap_read_sets:
+            for h, hap_reads in enumerate(locus_data.hap_read_sets):
                 phased_reads.append(len(hap_reads))
                 seqs      = [read_seqs[rid][0] for rid in hap_reads
                              if read_seqs[rid][0]]
                 alen_list = [len(read_seqs[rid][0]) for rid in hap_reads]
                 alen_lists.append(alen_list)
+                lower, upper = (round(x) for x in np.percentile(np.array(alen_list), [2.5, 97.5]))
 
+                decomp_seq = None
                 if seqs:
-                    ALT           = consensus_seq_poa(seqs)
+                    ALT, allele_length, decomp_seq, is_repetitive = alt_sequence(locus_data.read_aseqs, hap_reads, locus.motif_length)
                     allele_length = len(ALT)
                 else:
                     ALT           = '<DEL>'
                     allele_length = 0
 
-                ALT_seqs.append(ALT)
-                genotypes.append(allele_length)
                 key = allele_length if allele_length not in allele_count \
                       else str(allele_length)
                 allele_count[key] = len(hap_reads)
 
+                meth_data = calculate_methylation(hap_reads, locus_data.read_methylation, ALT)
+                if h == 0:
+                    locus_data.gt_aseqs        = (ALT, locus_data.gt_aseqs[1])
+                    locus_data.gt_alens        = (allele_length, locus_data.gt_alens[1])
+                    locus_data.gt_arange       = (f'{lower}-{upper}', locus_data.gt_arange[1])
+                    locus_data.hap_meth_data   = (meth_data, locus_data.hap_meth_data[1])
+                    if decomp_seq is not None:
+                        locus_data.gt_decomp_seqs  = (decomp_seq, locus_data.gt_decomp_seqs[1])
+                else:
+                    locus_data.gt_aseqs        = (locus_data.gt_aseqs[0], ALT)
+                    locus_data.gt_alens        = (locus_data.gt_alens[0], allele_length)
+                    locus_data.gt_arange       = (locus_data.gt_arange[0], f'{lower}-{upper}')
+                    locus_data.hap_meth_data   = (locus_data.hap_meth_data[0], meth_data)
+                    if decomp_seq is not None:
+                        locus_data.gt_decomp_seqs  = (locus_data.gt_decomp_seqs[0], decomp_seq)
+ 
             (l1, u1) = np.percentile(alen_lists[0], [2.5, 97.5])
             (l2, u2) = np.percentile(alen_lists[1], [2.5, 97.5])
             allele_range = f'{l1}-{u1},{l2}-{u2}'
