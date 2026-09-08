@@ -4,3 +4,4 @@
 /ATARVA/__pycache__
 /atarva_env/*
 .DS_store
+/test_data/*

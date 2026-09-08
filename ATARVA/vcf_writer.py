@@ -56,6 +56,7 @@ def vcf_writer(out, bam, bam_name):
     vcf_header.formats.add("MR", number='.', type="Integer",  description="Number of informative reads for methylation scoring for each allele")
     vcf_header.formats.add("DS", number='A', type="String",   description="Motif decomposed sequence for each allele sequence")
     vcf_header.formats.add("MV", number='.', type="String",   description="Base methylation score encoded for visualization for each allele")
+    vcf_header.formats.add("PS", number='1', type="String",   description="Phase Set assigned in the phasing process if available in alignment file")
 
     out.write(str(vcf_header))
 
@@ -132,7 +133,7 @@ def write_homozygous_call(cooper, locus_key):
     motif_copy = allele_length // locus.motif_length
 
     # --- decomposed sequence ---
-    if cooper.args.decompose and is_seq_alt and locus.motif_length <= 10:
+    if cooper.args.decompose and locus.motif_length <= 10:
         decomposed_seq = locus_data.gt_decomp_seqs[0] if locus_data.gt_decomp_seqs[0] else None
     else: decomposed_seq = '.'
 
@@ -212,9 +213,9 @@ def write_heterozygous_call(cooper, locus_key):
     meth_reads  = []
     meth_viztag = []
     for hap_methyl in locus_data.hap_meth_data:
-        meth_prob.append(str(hap_methyl[0]) if hap_methyl[0] is not None else '.') #methylation probability
+        meth_prob.append(str(hap_methyl[0])  if hap_methyl[0] is not None else '.') #methylation probability
         meth_reads.append(str(hap_methyl[1]) if hap_methyl[1] is not None else '.') #number of methylated reads
-        meth_viztag.append(hap_methyl[2] if hap_methyl[2] is not None else '.') #methylation visual encoding
+        meth_viztag.append(hap_methyl[2]     if hap_methyl[2] is not None else '.') #methylation visual encoding
 
     if locus_data.gt_aseqs[0] == locus_data.gt_aseqs[1]: # if the two alleles are the same, make it a homozygous call
         allele = locus_data.gt_aseqs[0]
@@ -231,24 +232,29 @@ def write_heterozygous_call(cooper, locus_key):
 
     else:
         if ref_allele in locus_data.gt_aseqs:
-            ref_index = 0; allele_index = 1
             if locus_data.gt_aseqs[0] != ref_allele:
-                allele_index = 0
-                ref_index = 1
-            allele = locus_data.gt_aseqs[allele_index]
+                allele_index = 0; ref_index = 1
+                GT = '1|0'
+                allele = locus_data.gt_aseqs[allele_index]
+                allele_length = 0 if allele == '<DEL>' else len(allele)
+                length_GT += f'{allele_length},{ref_alen}'
+                units_GT += f'{allele_length//locus.motif_length},{ref_units}'
+            else:
+                ref_index = 0; allele_index = 1
+                GT = '0|1'
+                allele = locus_data.gt_aseqs[allele_index]
+                allele_length = 0 if allele == '<DEL>' else len(allele)
+                length_GT += f'{ref_alen},{allele_length}'
+                units_GT += f'{ref_units},{allele_length//locus.motif_length}'
             AC = 1
-            GT = '0|1'
-            allele_length = 0 if allele == '<DEL>' else len(allele)
-            length_GT += f'{ref_alen},{allele_length}'
-            units_GT += f'{ref_units},{allele_length//locus.motif_length}'
 
-            SD = f'{len(locus_data.hap_read_sets[ref_index])},{len(locus_data.hap_read_sets[allele_index])}'
             ALT = allele
             if ref_index == 1:
                 meth_prob = meth_prob[::-1] # reverse the meth_prob to keep the order consistent with GT
                 meth_reads = meth_reads[::-1]
                 meth_viztag = meth_viztag[::-1]
-            allele_range = f'{locus_data.gt_arange[ref_index]},{locus_data.gt_arange[allele_index]}'
+            SD = f'{len(locus_data.hap_read_sets[0])},{len(locus_data.hap_read_sets[1])}'
+            allele_range = f'{locus_data.gt_arange[0]},{locus_data.gt_arange[1]}'
         else:
             AC = '1,1'
             GT = '1|2'
@@ -293,93 +299,11 @@ def write_heterozygous_call(cooper, locus_key):
             f':{decomposed_seqs}'
             f':{MV}'
         )
+    if locus_data.hap_category == 3 and locus_data.is_phased:
+        PS = list(set(locus_data.read_haplotag_ps.values())) if locus_data.read_haplotag_ps is not None else '.'
+        if PS != '.':
+            PS = PS[0]
+        FORMAT += ':PS'
+        SAMPLE += f':{PS}'
 
     print(*[cooper.chrom, locus.start + 1, '.',  ref_allele, ALT, 0, 'PASS', INFO, FORMAT, SAMPLE], file=cooper.outhandle, sep='\t')
-
-
-def vcf_multizygous_writer(contig, genotype_dict, locus_start, locus_end, DP, global_loci_info, ref, out, log_bool, decomp, hallele_counter):
-
-    locus_key = f'{contig}:{locus_start}-{locus_end}'
-
-    tag = "correlation_clustering"
-
-    if len(global_loci_info[locus_key]) > 5:
-        optional_tag = f';ID={global_loci_info[locus_key][5]}'
-    else:
-        optional_tag = ';ID=.'
-
-    motif_size = int(float(global_loci_info[locus_key][4]))
-
-    GT_dict = {}
-    gt_idx = 0
-    ref_allele_length = locus_end - locus_start
-    refcn = str(ref_allele_length // int(float(global_loci_info[locus_key][4])))
-    ref_seq = ref.fetch(contig, locus_start, locus_end)
-    for each_genotype in genotype_dict:
-        current_gt = genotype_dict[each_genotype]
-        if int(each_genotype) == ref_allele_length:
-            if ref_seq == current_gt[0]:
-                GT_dict[0] = (current_gt[0], str(each_genotype), current_gt[3], f'{current_gt[1][0]}-{current_gt[1][1]}', current_gt[4][0], current_gt[4][1], current_gt[2], current_gt[4][2])
-            else:
-                gt_idx += 1
-                GT_dict[gt_idx] = (current_gt[0], str(each_genotype), current_gt[3], f'{current_gt[1][0]}-{current_gt[1][1]}', current_gt[4][0], current_gt[4][1], current_gt[2], current_gt[4][2])
-        else:
-            gt_idx += 1
-            GT_dict[gt_idx] = (current_gt[0], str(each_genotype), current_gt[3], f'{current_gt[1][0]}-{current_gt[1][1]}', current_gt[4][0], current_gt[4][1], current_gt[2], current_gt[4][2])
-    del genotype_dict
-
-    GT = []
-    if gt_idx> 0:
-        AN = (gt_idx + 1) if (0 in GT_dict) else gt_idx
-    else:
-        AN = 2
-    # AN = (gt_idx + 1) if gt_idx>0 else 2
-    AC = ','.join(['1']*gt_idx) if gt_idx>0 else 0
-    ALT = []
-    AL = []
-    AR = []
-    SD = []
-    MA = []
-    MR = []
-    deseq = []
-    MV = []
-    for gt_key in sorted(GT_dict.keys()):
-        GT.append(str(gt_key))
-        if gt_key != 0:
-            ALT.append(GT_dict[gt_key][0])
-            deseq.append(GT_dict[gt_key][6] if GT_dict[gt_key][6] else '.')
-        AL.append(GT_dict[gt_key][1])
-        SD.append(str(GT_dict[gt_key][2]))
-        AR.append(GT_dict[gt_key][3])
-        MA.append(str(GT_dict[gt_key][4]) if GT_dict[gt_key][4] is not None else '.')
-        MR.append(str(GT_dict[gt_key][5]) if GT_dict[gt_key][5] is not None else '.')
-        MV.append(str(GT_dict[gt_key][7]) if GT_dict[gt_key][5] is not None else '.')
-    del GT_dict
-
-    GT = '/'.join(GT)
-    ALT = ','.join(ALT) if ALT else '.'
-    CN = ','.join([str(i // motif_size) for i in AL])
-    AL = ','.join(AL)
-    AR = ','.join(AR)
-    SD = ','.join(SD)
-    MA = ','.join(MA)
-    MR = ','.join(MR)
-    MV = ','.join(MV)
-
-    if log_bool:
-        eac = sorted(hallele_counter.items(), key = lambda x: x[1], reverse=True)
-        INFO = 'AC='+str(AC)+';AN='+str(AN)+';MOTIF=' + str(global_loci_info[locus_key][3]) + ';START=' + str(locus_start) + ';END='+str(locus_end) + optional_tag + ';REFCN='+refcn + ';CT=' + tag + ';EAC=' + str(eac)
-    else:
-        INFO = 'AC='+str(AC)+';AN='+str(AN)+';MOTIF=' + str(global_loci_info[locus_key][3]) + ';START=' + str(locus_start) + ';END='+str(locus_end) + optional_tag + ';REFCN='+refcn
-
-    if decomp:
-        deseq = ','.join(deseq) if deseq else '.'
-    else:
-        deseq = '.'
-
-    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV'
-    SAMPLE = GT + ':' + AL + ':' + CN + ':' + AR + ':' + SD + ':' + str(DP) + ':.:.:' + MA + ':' + MR + ':' + deseq + ':' + MV
-
-    print(*[contig, locus_start+1, '.',  ref_seq, ALT, 0, 'PASS', INFO, FORMAT, SAMPLE], file=out, sep='\t')
-
-    del GT, ALT, AL, CN, AR, SD, MA, MR, MV, deseq, global_loci_info[locus_key]

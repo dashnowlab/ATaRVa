@@ -92,6 +92,7 @@ class LocusVariation:
     reads:             list  = field(default_factory=list)  # list of all informative read indices for the locus
     read_names:        list  = field(default_factory=list)  # list of all informative read names for the locus
     read_haplotags:    dict  = field(default_factory=dict)  # the haplotag assigned to each read in reads
+    read_haplotag_ps:  dict  = field(default_factory=dict)  # the phase set assigned to each read in reads
     depth:             int   = 0                            # depth of the locus, updated when reads are subset for high coverage loci  
     read_alens:        dict  = field(default_factory=dict)  # read index -> allele length dict for the reads supporting the locus
     read_aseqs:        dict  = field(default_factory=dict)  # read index -> allele sequence dict for the reads supporting the locus, in the format (allele sequence, allele length) 

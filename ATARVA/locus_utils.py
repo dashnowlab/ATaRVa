@@ -188,7 +188,7 @@ def assign_hap_category(locus_data):
     :return: None (updates the locus_data.hap_category in place)
     """
 
-    if locus_data.is_genotyped and (list(locus_data.read_haplotags.values()).count(None) / locus_data.depth) <= 0.15:
+    if locus_data.is_phased and (list(locus_data.read_haplotags.values()).count(None) / locus_data.depth) <= 0.15:
         locus_data.hap_category = 3 # phased based on haplotag
         return
 
@@ -287,7 +287,7 @@ def process_locus(cooper, locus_key):
 
     record_ref_snps(cooper, new_reads, locus.start, locus.end)
 
-    if cooper.args.haplotag:
+    if cooper.args.haplotag and (len(set(locus_data.read_haplotag_ps.values())) == 1 and None not in set(locus_data.read_haplotag_ps.values())):
         hap1, hap2 = [], []
         for read_idx in read_indices:
             tag = locus_data.read_haplotags[read_idx]
