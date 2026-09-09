@@ -21,7 +21,7 @@ def vcf_writer(out, bam, bam_name):
     vcf_header = pysam.VariantHeader()
 
     # command
-    vcf_header.add_line(f"##command=ATaRVa_0.7.1+ext {' '.join(sys.argv)}")
+    vcf_header.add_line(f"##command=ATaRVa_0.7.1+ext0.01 {' '.join(sys.argv)}")
 
     for contig in bam.header['SQ']:
         vcf_header.contigs.add(contig['SN'], length=contig['LN'])
@@ -284,6 +284,7 @@ def write_heterozygous_call(cooper, locus_key):
     if locus_data.phase_mode == 'snp' and locus_data.phasing_snp_quals:
         num_snps  = locus_data.n_phasing_snps
         snp_quals = locus_data.phasing_snp_quals
+    if snp_quals == '': snp_quals = '.'
     FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV'
     SAMPLE = (
             f'{GT}'

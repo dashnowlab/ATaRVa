@@ -286,8 +286,18 @@ Optional arguments:
 For detailed information on advanced merging options, refer to the [Tamatr](./docs/merge_usage.md) documentation.
 
 ## Changelog
+
+### v0.7.1+ext0.01
+* Reports PS (phase set) in the VCF for haplotagged BAM inputs.
+* Fixed - Report SQ value as '.' for loci with no informative SNPs.
+
+
 ### v0.7.1+ext
-* First release.
+* First release. Extended version of [ATaRVa](https://github.com/SowpatiLab/ATaRVa) with additional features as below.
+* Default processing of the softclipped portions of the read to search for the presence of repeat loci from the catalogs by searching for the flanking sequences.
+* Implements a slightly different version of read-haplogrouping based on the informative SNPs. The reads are heirarchically grouped based on the minimising the Qvalue penalty of the informative SNPs.
+* Added a new option `--rna` to enable genotyping of tandem repeats from RNA-seq data. This option is designed parse the CIGAR string of the typicaly RNA-seq alignment which include introns and other splicing events encoded as N.
+* Added a new option `--instability` which outputs an additional file with allele information from each read at a locus
 
 ## Contact
 For queries or suggestions, please contact:
