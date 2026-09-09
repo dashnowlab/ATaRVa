@@ -1,5 +1,5 @@
 # ATaRVa - a tandem repeat genotyper
-![Badge-PyPI](https://img.shields.io/badge/PyPI-v0.7.1+ext-brightgreen)
+![Badge-PyPI](https://img.shields.io/badge/PyPI-v0.7.1+ext0.01-brightgreen)
 ![Badge-License](https://img.shields.io/badge/License-MIT-blue)
 
 <p>
@@ -290,7 +290,6 @@ For detailed information on advanced merging options, refer to the [Tamatr](./do
 ### v0.7.1+ext0.01
 * Reports PS (phase set) in the VCF for haplotagged BAM inputs.
 * Fixed - Report SQ value as '.' for loci with no informative SNPs.
-
 
 ### v0.7.1+ext
 * First release. Extended version of [ATaRVa](https://github.com/SowpatiLab/ATaRVa) with additional features as below.
