@@ -77,7 +77,6 @@ def run_merge(args):
     :return: None
     """
     print('atarva', ' '.join(sys.argv[1:]))
-    sys.exit()
 
     start_time = ti.default_timer()
 
