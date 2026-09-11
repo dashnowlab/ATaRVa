@@ -1,91 +1,199 @@
 import sys, os
 import pysam
+import copy
 import threading
 import polars as pl
 from functools import reduce
 
-def processor(process_df, outfile, tidx, each_thread, total_samples):
-    # print('starting process = ', each_thread)
-    #print(process_df.columns)
-    out = open(f'{outfile}_reader{tidx}_processor{each_thread}.vcf', 'w')
-    for row_dict in process_df.iter_rows(named=True):
-        genotyped_samples = 0
-        sample_wise_full_gt = []
-        ALT = []
-        alt_seq_lens = []
-        alt_seq_count = {}
-        for file_id in range(total_samples):
-            current_sample = row_dict[f's{file_id}']
-            if current_sample:
-                splited_sample = current_sample.split(':')
-                individual_sample_gt = splited_sample[1]
-            else:
-                sample_wise_full_gt.append('.:.:.:.:.:.:.:.:.')
-                continue
-            if individual_sample_gt=='.':
-                sample_wise_full_gt.append('.:.:.:.:.:.:.:.:.')
-            else:
-                genotyped_samples += 1
-                GT = []
-                alt_seqs = splited_sample[0].split(',') if splited_sample[0]!='.' else ""
-                seq_lens = [0 if i=='<DEL>' else len(i) for i in alt_seqs]
-                for idx,lens in enumerate(seq_lens):
-                    if lens in alt_seq_lens:
-                        alt_seq_count[lens] += 1 # count of that alt allele
-                        GT.append(str(alt_seq_lens.index(lens) + 1))
-                    else:
-                        ALT.append(alt_seqs[idx])
-                        alt_seq_lens.append(lens)
-                        alt_seq_count[lens] = 1 # initialize count of that alt allele
-                        GT.append(str(len(alt_seq_lens)))
-                alt_count = len(GT)
-                if len(individual_sample_gt) > 1: # autosomes
-                    phaser = individual_sample_gt[1] # either '/' or '|'
-                    sep_gt = individual_sample_gt.split(phaser) # separated genotype
-                            
-                    if alt_count==2: # if there are two alt alleles
-                        new_GT = phaser.join(GT)
-                    elif alt_count == 1: # if there is only one alt alleles
-                        the_single_gt = GT[0]
-                        if len(set(sep_gt)) == 2: # if it is heterozyous
-                            new_GT = phaser.join(['0', the_single_gt])
-                        else: # if it is homozygous
-                            new_GT = phaser.join([the_single_gt, the_single_gt])
-                    else:
-                        new_GT = '0'+phaser+'0' 
-                else: # Sex chromosomes
-                    if alt_count==1:
-                        new_GT = str(GT[0])
-                    else:
-                        new_GT = '0'                        
+INFO_MP_CUTOFF = 0.5
 
-                splited_sample[1] = new_GT
-                sample_wise_full_gt.append(':'.join(splited_sample[1:]))
-        if genotyped_samples:
+BASE_SCHEMA = {"C": pl.Categorical,
+               "S": pl.Int32,
+               "E": pl.Int32,
+               "R": pl.Categorical,
+               "I": pl.Categorical}
+FILE_SCHEMA = {"C": pl.Categorical,
+               "S": pl.Int32,
+               "E": pl.Int32}
+
+COLUMNS   = ["C", # CHROM
+             "S", # START
+             "E", # END
+             "R", # REF
+             "I"] # INFO
+FILE_COLUMNS = ["C", # CHROM
+                "S", # START
+                "E"] # END
+
+
+def extract_names(vcf_files):
+    """
+    Extract the sample names from the VCF files
+
+    :param vcf_files: List of VCF file paths
+    :return: List of sample names
+    """
+
+    sample_names = []
+    for f in vcf_files:
+        with pysam.VariantFile(f) as vcf:
+            sample_names.extend(list(vcf.header.samples))
+    return sample_names
+
+
+def joiner(frames, parquet_batch, tidx, outfile):
+    """
+    Joining multiple dataframes with different samples
+
+    :param frames: List of dataframes to be joined
+    :param parquet_batch: Batch number for the output parquet file
+    :param tidx: Thread index for multi-threaded processing
+    :param outfile: The output file path for the parquet file
+    :return: None, writes the joined dataframe to a parquet file
+    """
+
+    base = reduce(lambda l, r: l.join(r, on=['C', 'S', 'E'], how='left'), frames)
+    df   = base.collect(engine="streaming")
+    df.write_parquet(f"{outfile}_reader{tidx}_batch{parquet_batch}.parquet", compression="zstd")
+
+
+def write_header(out, bam_name, source_vcf_path):
+    """
+    Writing the VCF header to the output file based on the source VCF and sample names.
+
+    :param out: The output file handle to write the VCF header.
+    :param bam_name: List of sample names extracted from the BAM files.
+    :param source_vcf_path: Path to the source VCF file to extract contig information and other metadata.
+    :return: None, writes the VCF header to the output file
+    """
+
+    source_vcf = pysam.VariantFile(source_vcf_path)
+    vcf_header = pysam.VariantHeader()
+
+    # command
+    vcf_header.add_line(f"##command=Tamatr {' '.join(sys.argv)}")
+
+    for contig, metadata in source_vcf.header.contigs.items():
+        vcf_header.contigs.add(contig, length=metadata.length)
+    info_mp_cutoff = source_vcf.header.info["MPC"].description
+    source_vcf.close()
+    
+    #sample_name
+    for each_sample in bam_name:
+        vcf_header.add_sample(each_sample)
+
+    # FILTER
+    vcf_header.filters.add('LESS_READS', number=None, type=None, description="Read depth below threshold")
+
+    # INFO
+    vcf_header.info.add("AC",    number='A', type="Integer",  description="Number of alternate alleles in called genotypes")
+    vcf_header.info.add("AN",    number=1,   type="Integer",  description="Number of alleles in called genotypes")
+    vcf_header.info.add("MOTIF", number=1,   type="String",   description="Repeat motif")
+    vcf_header.info.add("START", number=1,   type="Integer",  description="Start position of the repeat region in 0-based coordinate system")
+    vcf_header.info.add("END",   number=1,   type="Integer",  description="End position of the repeat region")
+    vcf_header.info.add("ID",    number=1,   type="String",   description="Locus identifier tag")
+    vcf_header.info.add("REFCN", number=1,   type="Integer",  description="Reference allele copy number")
+    vcf_header.info.add("CT",    number=1,   type="String",   description="Cluster type")
+    vcf_header.info.add("MPC",   number=1,   type="String",   description=f"{INFO_MP_CUTOFF}")
+    vcf_header.info.add("AFD",   number=1,   type="String",   description="Allele length frequency for the reads supporting the locus")
+
+    # FORMAT
+    vcf_header.formats.add("GT", number=1,   type="String",   description="Genotype")
+    vcf_header.formats.add("AL", number=2,   type="Integer",  description="Allele length in base pairs")
+    vcf_header.formats.add("CN", number=2,   type="Integer",  description="Motif copy number for each allele")
+    vcf_header.formats.add("AR", number='.', type="String",   description="Allele length range")
+    vcf_header.formats.add("SD", number='.', type="Integer",  description="Number of reads supporting each haplogroup")
+    vcf_header.formats.add("DP", number=1,   type="Integer",  description="Total supporting reads for the repeat locus")
+    vcf_header.formats.add("SN", number='.', type="Integer",  description="Number of informative SNPs used for phasing")
+    vcf_header.formats.add("SQ", number='.', type="Float",    description="Average Phred-scale base call quality of each informative SNP across the supporting reads")
+    vcf_header.formats.add("MA", number='.', type="Float",    description="Average  methylation level for each allele")
+    vcf_header.formats.add("MR", number='.', type="Integer",  description="Number of informative reads for methylation scoring for each allele")
+    vcf_header.formats.add("DS", number='A', type="String",   description="Motif decomposed sequence for each allele sequence")
+    vcf_header.formats.add("MV", number='.', type="String",   description="Base methylation score encoded for visualization for each allele")
+    vcf_header.formats.add("PS", number='1', type="String",   description="Phase Set assigned in the phasing process if available in alignment file")
+
+    out.write(str(vcf_header))
+
+
+def processor(process_df, outfile, tidx, each_thread, nsamples):
+    """
+    Processing of each locus with information from all samples and writing the output to a VCF file.
+
+    :param process_df: DataFrame containing the loci and sample information to be processed
+    :param outfile: The output VCF file path
+    :param tidx: Thread index for multi-threaded processing
+    :param each_thread: Thread index for the current processing thread
+    :param total_samples: Total number of samples being processed
+    :return: None, writes the processed information to a VCF file
+    """
+
+    out = open(f'{outfile}_reader{tidx}_processor{each_thread}.vcf', 'w')
+    for row in process_df.iter_rows(named=True):
+        genotyped = 0
+        sample_formats = []
+
+        ALTs = []
+        ALT_counts = {}
+
+        for vid in range(nsamples):
+            sformat = row[f'F{vid:06d}']
+
+            if sformat:
+                sformat = sformat.split(':')
+            else:
+                sample_formats.append('.:.:.:.:.:.:.:.:.')
+                continue
+
+            genotyped += 1
+            GT = []
+            sALTs    = sformat[0].split(',') if sformat[0] != '.' else ""
+            seq_lens = [0 if seq=='<DEL>' else len(seq) for seq in sALTs]
+
+            for ALT in sALTs:
+                if ALT not in ALTs:
+                    ALTs.append(ALT)
+                    ALT_counts[ALT] = 1
+                else: 
+                    ALT_counts[ALT] += 1
+
+            sGT = sformat[1];
+            sep = ''
+            if '/' in sGT: sGT = sGT.split('/'); sep = '/'
+            elif '|' in sGT: sGT = sGT.split('|'); sep = '|'
+
+            for gt in sGT:
+                if gt == '0':
+                    GT.append('0')
+                else:
+                    alt_idx = int(gt) - 1
+                    GT.append(str(ALTs.index(sALTs[alt_idx]) + 1))
+
+            sformat[1] = sep.join(GT)
+            sample_formats.append(':'.join(sformat[1:]))
+        if genotyped:
             pass
         else:
             continue
-        if alt_seq_lens:
+        if ALTs:
             AC = []
-            for i in alt_seq_lens:
-                AC.append(str(alt_seq_count[i]))
+            for ALT in ALTs:
+                AC.append(str(ALT_counts[ALT]))
             AC = ','.join(AC)
         else:
             AC = '0'
-        AN = str(genotyped_samples * 2)
-        info = 'AC='+AC+';AN='+AN+';' + row_dict['i']
-        ref_seq = row_dict['r']
-        start = row_dict['s']
-        chrom = row_dict['c']
-        filter = '.'
-        id = '.'
-        q = '.'
-        alt = ','.join(ALT) if ALT else '.'
-        format = 'GT:AL:CN:LPM:AR:SD:DP:SN:SQ:MA:MR:DS:MV'
-        #sample = '\t'.join(sample_wise_full_gt)
+        AN = str(genotyped * 2)
+        info = 'AC='+AC+';AN='+AN+';' + row['I']
+        ref_seq = row['R']
+        start   = row['S']
+        chrom   = row['C']
+        filter  = '.'
+        id      = '.'
+        q       = '.'
+        alt     = ','.join(ALTs) if ALTs else '.'
+        format  = 'GT:AL:CN:LPM:AR:SD:DP:SN:SQ:MA:MR:DS:MV'
 
-        repeat_info = [chrom, start, id, ref_seq, alt, q, filter, info, format, *sample_wise_full_gt]
-        del sample_wise_full_gt
+        repeat_info = [chrom, start, id, ref_seq, alt, q, filter, info, format, *sample_formats]
+        del sample_formats
         tot_tabs = len(repeat_info)
         chunk_size = 100
         for i in range(0, tot_tabs, chunk_size):
@@ -94,196 +202,169 @@ def processor(process_df, outfile, tidx, each_thread, total_samples):
             if i<tot_tabs-1:
                 out.write("\t")
         out.write("\n")
-        #out.write("\t".join(map(str, repeat_info)) + "\n")
+
         del repeat_info
     out.close()
-    # print('DONE Processing....')
 
-def sample_name_extract(vcfs):
-    sample_names = []
-    for each_vcf in vcfs:
-        with pysam.VariantFile(each_vcf) as vcf_in:
-            sample_names.extend(list(vcf_in.header.samples))
-    return sample_names
 
-def reader(outfile, bedfile, ref, vcfs, contigs, tidx, process_thread):
+def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_thread):
+    """
+    The main function that handles the merging of ATaRVa VCF files and writes the merged output to a new VCF file.
 
-    total_samples = len(vcfs)
-    #print("total_samples = ", total_samples)
+    :param outfile: The output VCF file path.
+    :param bedfile: The BED file path containing the regions of interest.
+    :param ref: The reference genome file path.
+    :param vcfs: A list of ATaRVa VCF file paths to be merged.
+    :param contigs: A list of contigs to be processed.
+    :param tidx: Thread index for multi-threaded processing.
+    :param process_thread: Number of threads to be used for processing.
+
+    :return: None, write output the main output VCF or thread specific VCF files.
+    """
+
+    n_samples = len(vcf_files)
+
     tbx = pysam.TabixFile(bedfile)
-    ref_file = pysam.FastaFile(ref)
-    vcf_instance = []
-    for each_vcf in vcfs:
-        vcf_instance.append(pysam.TabixFile(each_vcf))
-    #print(len(vcf_instance))
-    if tidx!=-1: # multi thread
-        if tidx==0: # first process
-            # vcf_names = [file_path.split("/")[-1].split('.')[0] for file_path in vcfs]
-            vcf_names = sample_name_extract(vcfs)
+    ref = pysam.FastaFile(ref_file)
+
+    # read each vcf file as a tabix input
+    vcfs = []
+    for f in vcf_files:
+        vcfs.append(pysam.TabixFile(f))
+
+    if tidx != -1: # multi thread
+        if tidx == 0: # first process
+            sample_names = extract_names(vcf_files)
             out = open(f'{outfile}.vcf', 'w')
-            vcf_writer(out, vcf_names, vcfs[0])
+            write_header(out, sample_names, vcf_files[0])
         else:
             out = open(f'{outfile}_thread_{tidx}.vcf', 'w')
     else: # single thread
-        # vcf_names = [file_path.split("/")[-1].split('.')[0] for file_path in vcfs]
-        vcf_names = sample_name_extract(vcfs)
+        sample_names = extract_names(vcf_files)
         out = open(f'{outfile}.vcf', 'w')
-        vcf_writer(out, vcf_names, vcfs[0])
-
+        write_header(out, sample_names, vcf_files[0])
 
     thread_pool = list()
     print('Reader thread = ', tidx)
     print(f'Inside reader{tidx} = length of contig = {len(contigs)}')
     for contig in contigs:
-        
+
         Chrom, Start, End = contig
         # print("\nReading new block............")
-        frames = []
         base_frame = pl.DataFrame().lazy()
+        frames = []
         parquet_batch = 0
-        file_count = 0
-        for file_id,file in enumerate(vcf_instance):
-            #print(file_id)
-            #if Chrom not in file.contigs: break
-            file_data_dict = {}
-        
-            # dictionary for sample file
-            file_data_dict['s'] = []
-            file_data_dict['e'] = []
-        
-            # variable for each column
-            file_start = file_data_dict['s']
-            file_end = file_data_dict['e']
-        
-            if file_id == 0:
+        fcount = 0
 
-                schema = {"s": pl.Int32,
-                         "e": pl.Int32,
-                         "c": pl.Categorical,
-                         "r": pl.Categorical,
-                         "i": pl.Categorical,
-                         "s0": pl.Categorical}
-                
-                # dictionary for sample file
-                file_data_dict['c'] = [] # chrom
-                file_data_dict['r'] = [] # ref
-                file_data_dict['i'] = [] # info
-                file_data_dict['s0'] = [] # sample
-                
-                # variable for each column
-                file_ref = file_data_dict['r']
-                file_info = file_data_dict['i']
-                file_sample = file_data_dict['s0']
-             
+        for vidx, vcf in enumerate(vcfs):
 
+            # Create a deep copy of the DataFrame schema
+
+            if vidx == 0: columns = COLUMNS + [f'F{vidx:06d}']
+            else: columns = FILE_COLUMNS + [f'F{vidx:06d}']
+            vcf_data = {col: [] for col in columns}
+
+            if vidx == 0:
+                schema = copy.deepcopy(BASE_SCHEMA)
+                schema[f'F{vidx:06d}'] = pl.Categorical
                 for line in tbx.fetch(Chrom, Start[0], End[1]):
-                    line = line.strip().split('\t')
+                    line  = line.strip().split('\t')
                     chrom = line[0]
                     start = int(line[1])
-                    end = int(line[2])
-                    
-                    if (start>=Start[0]) and (end<=End[1]):
-                        if start==Start[0]:
-                            if end==Start[1]: pass
+                    end   = int(line[2])
+
+                    if (start >= Start[0]) and (end <= End[1]):
+                        if start == Start[0]:
+                            if end == Start[1]: pass
                             else: continue
                         pass
-                    elif start<Start[0]:
-                        continue
-                    elif start>=End[0]: break
-                    
-                    motif_value = line[3]
-                    ref_value = end-start # +1)//period_value
-                    ID = line[5] if len(line)>5 else "."
-                    REFCN = ref_value // float(line[4])
+                    elif start < Start[0]: continue
+                    elif start >= End[0]:  break
+
+                    motif    = line[3]
+                    ref_alen = end - start
+                    REFCN    = ref_alen // float(line[4])
+                    ID       = line[5] if len(line) > 5 else "."
                     del line
-                    
+
                     ref_string = True
                     has_region = False
 
-                    if Chrom in file.contigs:
-                        for entry in file.fetch(chrom, start+1, end):
-                            entry = entry.strip().split('\t')
-                            st = int(entry[1])
-                            if (st-1)!=start: # -1 to match with 0-based coord
+                    if Chrom in vcf.contigs:
+                        for record in vcf.fetch(chrom, start+1, end):
+                            record = record.strip().split('\t')
+                            vpos   = int(record[1])
+                            if (vpos - 1) != start: # -1 to match with 0-based coord
                                 continue
 
-                            info = entry[7].split(';', 5)[:7]
-                            en = int(info[4].split('=')[1])
-                            if ((st-1)==start) & (en==end): # -1 to match with 0-based coord
+                            info = {a.split('=')[0]: a.split('=')[1] for a in record[7].split(';', 5)}
+                            if ((vpos - 1) == start) and (info['END'] == end): # -1 to match with 0-based coord
                                 has_region = True
-                                file_start.append(st) 
-                                file_end.append(en)
-                                file_ref.append(entry[3])
-                                file_info.append(f"MOTIF={motif_value};START={start};END={end};ID={ID};REFCN={REFCN}")
-                                sample = entry[9]
-                                if sample[0]=='.':
-                                    file_sample.append(None)
+                                vcf_data['C'].append(chrom)
+                                vcf_data['S'].append(vpos)
+                                vcf_data['E'].append(info['END'])
+                                vcf_data['R'].append(record[3])
+                                vcf_data['I'].append(f"MOTIF={motif};START={start};END={end};ID={ID};REFCN={REFCN}")
+                                if record[9][0] =='.':
+                                    vcf_data[f'F{vidx:06d}'].append(None)
                                 else:
-                                    # file_sample.append(entry[4]+':'+':'.join(sample.split(':', 9)[:9]))
-                                    file_sample.append(entry[4]+':'+sample)
-                                del entry
-                                del sample
+                                    vcf_data[f'F{vidx:06d}'].append(record[9])
+                                del record
+                                del info
                             break
-                            
+
                     if not has_region:
-                        file_start.append(start+1)
-                        file_end.append(end)
-                        file_ref.append(ref_file.fetch(chrom, start, end))
-                        file_info.append(f"MOTIF={motif_value};START={start};END={end};ID={ID};REFCN={REFCN}")
-                        file_sample.append(None)
+                        vcf_data['C'].append(chrom)
+                        vcf_data['S'].append(start + 1)
+                        vcf_data['E'].append(end)
+                        vcf_data['R'].append(ref.fetch(chrom, start, end))
+                        vcf_data['I'].append(f"MOTIF={motif};START={start};END={end};ID={ID};REFCN={REFCN}")
+                        vcf_data[f'F{vidx:06d}'].append(None)
 
-                file_count += 1
-                
-                file_data_dict['c'].extend([Chrom]*len(file_start))
-                df = pl.DataFrame(file_data_dict, schema=schema).lazy()
-                df = df.unique(subset=['s', 'e'], keep='first', maintain_order=True)
+                fcount += 1
+
+                df = pl.DataFrame(vcf_data, schema_overrides=schema).lazy()
+                df = df.unique(subset=['C', 'S', 'E'], keep='first', maintain_order=True)
+                base_frame = df.collect().select(['S', 'E']).lazy()
+
                 frames.append(df)
-                base_frame = df.collect().select(['s', 'e']).lazy()
                 del df
-                #print('base_frame shape = ', base_frame.collect().shape)
+
             else:
-                file_count += 1
-                
-                schema = {"s": pl.Int32,
-                         "e": pl.Int32,
-                         f's{file_id}': pl.Categorical}
+                fcount += 1
 
-                file_data_dict[f's{file_id}'] = [] # sample
-                file_sample = file_data_dict[f's{file_id}']
+                schema = copy.deepcopy(FILE_SCHEMA)
+                schema[f'F{vidx:06d}']   = pl.Categorical
+                vcf_data[f'F{vidx:06d}'] = []
 
-                if file_count >= 200:
+                if fcount >= 200:
                     joiner(frames, parquet_batch, tidx, outfile)
                     parquet_batch += 1
                     del frames
-                    frames = []
-                    frames.append(base_frame)
-                    file_count = 0
+                    frames = [base_frame]
+                    fcount = 0
 
-                if Chrom not in file.contigs:
-                    df = pl.DataFrame(file_data_dict, schema=schema).lazy()
+                if Chrom not in vcf.contigs:
+                    df = pl.DataFrame(vcf_data, schema=schema).lazy()
                     frames.append(df)
-                    print(f'Continuing due to no chr {Chrom} in {file_id}')
                     continue
 
-                for entry in file.fetch(Chrom, Start[0], End[1]):
-                    entry = entry.strip().split('\t')
-                    
-                    sample = entry[9]
-                    if sample[0] == '.':
+                for record in vcf.fetch(Chrom, Start[0], End[1]):
+                    record = record.strip().split('\t')
+
+                    if record[9][0] == '.':
                         continue
                     else:
-                        st = int(entry[1])
-                        info = entry[7].split(';', 5)[:7]
-                        en = int(info[4].split('=')[1])
-                        
-        
-                        file_start.append(st)
-                        file_end.append(en)
-                        # file_sample.append(entry[4]+':'+':'.join(sample.split(':', 9)[:9]))
-                        file_sample.append(entry[4]+':'+sample)
-                        
-                df = pl.DataFrame(file_data_dict, schema=schema).lazy()
-                df = df.unique(subset=['s', 'e'], keep='first', maintain_order=True)
+                        vpos = int(record[1])
+                        info = {a.split('=')[0]: a.split('=')[1] for a in record[7].split(';', 5)}
+
+                        vcf_data['C'].append(Chrom)
+                        vcf_data['S'].append(vpos)
+                        vcf_data['E'].append(int(info['END']))
+                        vcf_data[f'F{vidx:06d}'].append(record[4] + ':' + record[9])
+
+                df = pl.DataFrame(vcf_data, schema=schema).lazy()
+                df = df.unique(subset=['C', 'S', 'E'], keep='first', maintain_order=True)
                 frames.append(df)
                 del df
 
@@ -295,20 +376,18 @@ def reader(outfile, bedfile, ref, vcfs, contigs, tidx, process_thread):
         # print('Done reading & joining!!!!!!!!!')
         if thread_pool:
             # joining previous threads - waiting for previous threads to be over
-            for thread_x in thread_pool:
-                # print('waiting for ', thread_x)
-                thread_x.join()
+            for t in thread_pool: t.join()
             thread_pool.clear()
 
             # print('Concatenating processor files..............')
             for each_thread in range(process_thread):
                 thread_out = f'{outfile}_reader{tidx}_processor{each_thread}.vcf'
-                # print('opening ', thread_out)
+
                 with open(thread_out, 'r') as fh:
                     for line in fh:
                         repeat_info = line.strip().split('\t')
-                        tot_tabs = len(repeat_info)
-                        chunk_size = 100
+                        tot_tabs    = len(repeat_info)
+                        chunk_size  = 100
                         for i in range(0, tot_tabs, chunk_size):
                             chunk = repeat_info[i:i + chunk_size]
                             out.write("\t".join(map(str, chunk)))
@@ -316,52 +395,49 @@ def reader(outfile, bedfile, ref, vcfs, contigs, tidx, process_thread):
                                 out.write("\t")
                         out.write("\n")
                         del repeat_info
-                        #out.write("\t".join(map(str, repeat_info)) + "\n")
-                # print('Removing ', thread_out)
-                #del repeat_info
+
                 os.remove(thread_out)
 
         batch_files = [f"{outfile}_reader{tidx}_batch{batch_val}.parquet" for batch_val in range(parquet_batch)]
         parquet_frames = [pl.read_parquet(f).lazy() for f in batch_files]
         for p_files in batch_files:
             os.remove(p_files)
-        
+
         if parquet_frames:
-            merged = reduce(lambda l, r: l.join(r, on=['s','e'], how='left'), parquet_frames)
+            merged = reduce(lambda l, r: l.join(r, on=['C','S','E'], how='left'), parquet_frames)
             whole_df = merged.collect(engine="streaming")
-            print("Shape = ", whole_df.shape)
-            
+
             if process_thread > 0:
-                loci_count = whole_df.shape[0]
+                loci_count  = whole_df.shape[0]
                 split_count = loci_count // process_thread
                 if split_count == 0:
                     split_count = 1
                 initial = 0
                 track = split_count
-        
+
                 # initializing threads
                 for each_thread in range(process_thread):
                     if each_thread+1 == process_thread:
                         process_df = whole_df[initial : ]
                     else:
                         process_df = whole_df[initial : track]
-                        
-                    thread_x = threading.Thread(target = processor, args = (process_df, outfile, tidx, each_thread, total_samples))
-                    thread_x.start()
-                    thread_pool.append(thread_x)
-                    
+
+                    t = threading.Thread(target = processor, args = (process_df, outfile, tidx, each_thread, n_samples))
+                    t.start()
+                    thread_pool.append(t)
+
                     initial = track
                     track += split_count
-    
+
             else:
-                processor(whole_df, outfile, tidx, 0, total_samples)
+                processor(whole_df, outfile, tidx, 0, n_samples)
                 thread_out = f'{outfile}_reader{tidx}_processor{0}.vcf'
                 with open(thread_out, 'r') as fh:
                     for line in fh:
                         repeat_info = line.strip().split('\t')
                         out.write("\t".join(map(str, repeat_info)) + "\n")
                 os.remove(thread_out)
-    
+
             del whole_df
 
     if thread_pool:
@@ -370,7 +446,7 @@ def reader(outfile, bedfile, ref, vcfs, contigs, tidx, process_thread):
             # print('waiting for ', thread_x)
             thread_x.join()
         thread_pool.clear()
-    
+
         # print('Concatenating processor files..............')
         for each_thread in range(process_thread):
             thread_out = f'{outfile}_reader{tidx}_processor{each_thread}.vcf'
@@ -381,66 +457,9 @@ def reader(outfile, bedfile, ref, vcfs, contigs, tidx, process_thread):
                     out.write("\t".join(map(str, repeat_info)) + "\n")
             # print('Removing ', thread_out)
             os.remove(thread_out)
-    
-    for i in vcf_instance:
-        i.close()
-    ref_file.close()
+
+    # closing all the opened files
+    for vcf in vcfs: vcf.close()
+    ref.close()
     tbx.close()
     out.close()
-
-
-def joiner(frames, parquet_batch, tidx, outfile):
-    base = reduce(lambda l, r: l.join(r, on=['s', 'e'], how='left'), frames)
-    df = base.collect(engine="streaming")
-    df.write_parquet(f"{outfile}_reader{tidx}_batch{parquet_batch}.parquet", compression="zstd")
-
-
-def vcf_writer(out, bam_name, source_vcf_path):
-
-    source_vcf = pysam.VariantFile(source_vcf_path)
-
-    vcf_header = pysam.VariantHeader()
-
-    # command
-    vcf_header.add_line(f"##command=Tamatr {' '.join(sys.argv)}")
-
-    # print(source_vcf)
-
-    for contig, metadata in source_vcf.header.contigs.items():
-        vcf_header.contigs.add(contig, length=metadata.length)
-    info_mp_cutoff = source_vcf.header.info["MPC"].description
-    source_vcf.close()
-    
-    #sample_name
-    for each_sample in bam_name:
-        vcf_header.add_sample(each_sample)
-    # FILTER
-    vcf_header.filters.add('LESS_READS', number=None, type=None, description="Read depth below threshold")
-    # INFO
-    vcf_header.info.add("AC", number='A', type="Integer", description="Number of alternate alleles in called genotypes")
-    vcf_header.info.add("AN", number=1, type="Integer", description="Number of alleles in called genotypes")
-    vcf_header.info.add("MOTIF", number=1, type="String", description="Repeat motif")
-    vcf_header.info.add("START", number=1, type="Integer", description="Start position of the repeat region in 0-based coordinate system")
-    vcf_header.info.add("END", number=1, type="Integer", description="End position of the repeat region")
-    vcf_header.info.add("ID", number=1, type="String", description="Locus identifier tag")
-    vcf_header.info.add("REFCN", number=1, type="Integer", description="Reference allele copy number")
-    vcf_header.info.add("CT", number=1, type="String", description="Cluster type")
-    vcf_header.info.add("EAC", number=1, type="String", description="Each Allele Count")
-    vcf_header.info.add("MPC", number=1, type="String", description=f"{info_mp_cutoff}")
-    # FORMAT
-    vcf_header.formats.add("GT", number=1, type="String", description="Genotype")
-    vcf_header.formats.add("AL", number=2, type="Integer", description="Allele length in base pairs")
-    vcf_header.formats.add("CN", number=2, type="Integer", description="Motif copy number for each allele")
-    vcf_header.formats.add("LPM", number=2, type="String", description="Longest pure motif repeat and its copy number for each allele")
-    vcf_header.formats.add("AR", number='.', type="String", description="Allele length range")
-    vcf_header.formats.add("SD", number='.', type="Integer", description="Number of reads supporting for the alleles")
-    vcf_header.formats.add("PC", number=2, type="Integer", description="Number of reads in the phased cluster for each allele")
-    vcf_header.formats.add("DP", number=1, type="Integer", description="Number of the supporting reads for the repeat locus")
-    vcf_header.formats.add("SN", number='.', type="Integer", description="Number of SNPs used for phasing")
-    vcf_header.formats.add("SQ", number='.', type="Float", description="Phred-scale qualities of the SNPs used for phasing")
-    vcf_header.formats.add("MA", number='.', type="Float", description="Mean methylation level for each allele")
-    vcf_header.formats.add("MR", number='.', type="Integer", description="Number of reads providing methylation info for each allele")
-    vcf_header.formats.add("DS", number='A', type="String", description="Motif decomposed sequence")
-    vcf_header.formats.add("MV", number='.', type="String", description="Visual methylation encodings for the alleles")
-
-    out.write(str(vcf_header))
