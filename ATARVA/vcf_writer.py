@@ -1,6 +1,8 @@
 import sys
 import pysam
 from ATARVA.decompose import motif_decomposition
+from ATARVA.version import __version__
+import time as ti
 
 
 INFO_MP_CUTOFF = 0.5
@@ -9,7 +11,7 @@ def set_info_mp_cutoff(val):
     INFO_MP_CUTOFF = val
 
 
-def vcf_writer(out, bam, bam_name):
+def vcf_writer(args, out, bam, bam_name):
     """
     Initialize the VCF header and write to output file
 
@@ -19,12 +21,20 @@ def vcf_writer(out, bam, bam_name):
     """
 
     vcf_header = pysam.VariantHeader()
+    vcf_header.add_line('##fileformat=VCFv4.5')
+    vcf_header.add_line('##fileDate={}'.format(ti.strftime("%Y%m%d")))
+    vcf_header.add_line('##source=ATaRVa-v{__version__}')
+    if args.fasta:
+        vcf_header.add_line('##reference={}'.format(args.fasta))
+    else:
+        vcf_header.add_line('##reference={}'.format(bam.header.get('SQ', [{}])[0].get('SN', 'unknown')))
 
     # command
-    vcf_header.add_line(f"##command=ATaRVa_0.7.1+ext0.01 {' '.join(sys.argv)}")
+    vcf_header.add_line(f"##command=atarva {' '.join(sys.argv[1:])}")
 
     for contig in bam.header['SQ']:
         vcf_header.contigs.add(contig['SN'], length=contig['LN'])
+
     #sample_name
     vcf_header.add_sample(bam_name)
 
@@ -69,6 +79,7 @@ def write_fail_call(cooper, locus_key):
     :param locus_key: key for the locus in the format 'chrom:start-end'
     :param skip_point: integer indicating the reason for failure, to be added in the FILTER column of the VCF
     """
+
     FILTER = ''
     locus = cooper.cooper_loci_info[locus_key]
     depth = 0
@@ -98,6 +109,7 @@ def write_homozygous_call(cooper, locus_key):
     :param cooper:           cooper object
     :param locus_key:        locus identifier string
     """
+
     locus = cooper.cooper_loci_info[locus_key]
     locus_data = cooper.cooper_loci_data[locus_key]
 
