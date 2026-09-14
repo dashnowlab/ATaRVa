@@ -41,20 +41,20 @@ def extract_names(vcf_files):
     return sample_names
 
 
-def joiner(frames, parquet_batch, tidx, outfile):
+def joiner(frames, parquet_batch, pidx, outfile):
     """
     Joining multiple dataframes with different samples
 
     :param frames: List of dataframes to be joined
     :param parquet_batch: Batch number for the output parquet file
-    :param tidx: Thread index for multi-threaded processing
+    :param pidx: Process index for multi-process processing
     :param outfile: The output file path for the parquet file
     :return: None, writes the joined dataframe to a parquet file
     """
 
     base = reduce(lambda l, r: l.join(r, on=['C', 'S', 'E'], how='left'), frames)
     df   = base.collect(engine="streaming")
-    df.write_parquet(f"{outfile}_reader{tidx}_batch{parquet_batch}.parquet", compression="zstd")
+    df.write_parquet(f"{outfile}_P{pidx}_B{parquet_batch}.parquet", compression="zstd")
 
 
 def write_header(out, bam_name, source_vcf_path):
@@ -71,7 +71,7 @@ def write_header(out, bam_name, source_vcf_path):
     vcf_header = pysam.VariantHeader()
 
     # command
-    vcf_header.add_line(f"##command=Tamatr {' '.join(sys.argv)}")
+    vcf_header.add_line(f"##command=atarva {' '.join(sys.argv[1:])}")
 
     for contig, metadata in source_vcf.header.contigs.items():
         vcf_header.contigs.add(contig, length=metadata.length)
@@ -115,19 +115,19 @@ def write_header(out, bam_name, source_vcf_path):
     out.write(str(vcf_header))
 
 
-def processor(process_df, outfile, tidx, each_thread, nsamples):
+def blending(process_df, outfile, pidx, tidx, nsamples):
     """
     Processing of each locus with information from all samples and writing the output to a VCF file.
 
     :param process_df: DataFrame containing the loci and sample information to be processed
     :param outfile: The output VCF file path
+    :param pidx: Process index for multi-process processing
     :param tidx: Thread index for multi-threaded processing
-    :param each_thread: Thread index for the current processing thread
-    :param total_samples: Total number of samples being processed
+    :param nsamples: Number of samples being processed
     :return: None, writes the processed information to a VCF file
     """
 
-    out = open(f'{outfile}_reader{tidx}_processor{each_thread}.vcf', 'w')
+    out = open(f'{outfile}_P{pidx}_T{tidx}.vcf', 'w')
     for row in process_df.iter_rows(named=True):
         genotyped = 0
         sample_formats = []
@@ -207,17 +207,19 @@ def processor(process_df, outfile, tidx, each_thread, nsamples):
     out.close()
 
 
-def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_thread):
+def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, pidx, threads):
     """
     The main function that handles the merging of ATaRVa VCF files and writes the merged output to a new VCF file.
+    This builds the polar data frame with information from each VCF file.
+    The blending function handles merging the information at a locus level creating the merged output.
 
     :param outfile: The output VCF file path.
     :param bedfile: The BED file path containing the regions of interest.
     :param ref: The reference genome file path.
     :param vcfs: A list of ATaRVa VCF file paths to be merged.
     :param contigs: A list of contigs to be processed.
-    :param tidx: Thread index for multi-threaded processing.
-    :param process_thread: Number of threads to be used for processing.
+    :param pidx: process index for multi-processing.
+    :param threads: number of threads to be used for this process processing.
 
     :return: None, write output the main output VCF or thread specific VCF files.
     """
@@ -232,21 +234,21 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_t
     for f in vcf_files:
         vcfs.append(pysam.TabixFile(f))
 
-    if tidx != -1: # multi thread
-        if tidx == 0: # first process
+    if pidx != -1: # multi thread
+        if pidx == 0: # first process
             sample_names = extract_names(vcf_files)
-            out = open(f'{outfile}.vcf', 'w')
+            out = open(f'{outfile}', 'w')
             write_header(out, sample_names, vcf_files[0])
         else:
-            out = open(f'{outfile}_thread_{tidx}.vcf', 'w')
+            out = open(f'{outfile}_P{pidx}.vcf', 'w')
     else: # single thread
         sample_names = extract_names(vcf_files)
-        out = open(f'{outfile}.vcf', 'w')
+        out = open(f'{outfile}', 'w')
         write_header(out, sample_names, vcf_files[0])
 
     thread_pool = list()
-    print('Reader thread = ', tidx)
-    print(f'Inside reader{tidx} = length of contig = {len(contigs)}')
+    print('Reader thread = ', pidx)
+    print(f'Inside reader{pidx} = length of contig = {len(contigs)}')
     for contig in contigs:
 
         Chrom, Start, End = contig
@@ -338,7 +340,7 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_t
                 vcf_data[f'F{vidx:06d}'] = []
 
                 if fcount >= 200:
-                    joiner(frames, parquet_batch, tidx, outfile)
+                    joiner(frames, parquet_batch, pidx, outfile)
                     parquet_batch += 1
                     del frames
                     frames = [base_frame]
@@ -369,7 +371,7 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_t
                 del df
 
         if frames:
-            joiner(frames, parquet_batch, tidx, outfile)
+            joiner(frames, parquet_batch, pidx, outfile)
             parquet_batch += 1
             del frames
 
@@ -379,9 +381,8 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_t
             for t in thread_pool: t.join()
             thread_pool.clear()
 
-            # print('Concatenating processor files..............')
-            for each_thread in range(process_thread):
-                thread_out = f'{outfile}_reader{tidx}_processor{each_thread}.vcf'
+            for tidx in range(threads):
+                thread_out = f'{outfile}_P{pidx}_T{tidx}.vcf'
 
                 with open(thread_out, 'r') as fh:
                     for line in fh:
@@ -398,7 +399,7 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_t
 
                 os.remove(thread_out)
 
-        batch_files = [f"{outfile}_reader{tidx}_batch{batch_val}.parquet" for batch_val in range(parquet_batch)]
+        batch_files = [f"{outfile}_P{pidx}_B{b}.parquet" for b in range(parquet_batch)]
         parquet_frames = [pl.read_parquet(f).lazy() for f in batch_files]
         for p_files in batch_files:
             os.remove(p_files)
@@ -407,22 +408,22 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_t
             merged = reduce(lambda l, r: l.join(r, on=['C','S','E'], how='left'), parquet_frames)
             whole_df = merged.collect(engine="streaming")
 
-            if process_thread > 0:
+            if threads > 0:
                 loci_count  = whole_df.shape[0]
-                split_count = loci_count // process_thread
+                split_count = loci_count // threads
                 if split_count == 0:
                     split_count = 1
                 initial = 0
                 track = split_count
 
                 # initializing threads
-                for each_thread in range(process_thread):
-                    if each_thread+1 == process_thread:
+                for tidx in range(threads):
+                    if tidx == threads - 1:
                         process_df = whole_df[initial : ]
                     else:
                         process_df = whole_df[initial : track]
 
-                    t = threading.Thread(target = processor, args = (process_df, outfile, tidx, each_thread, n_samples))
+                    t = threading.Thread(target = blending, args = (process_df, outfile, pidx, tidx, n_samples))
                     t.start()
                     thread_pool.append(t)
 
@@ -430,8 +431,8 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_t
                     track += split_count
 
             else:
-                processor(whole_df, outfile, tidx, 0, n_samples)
-                thread_out = f'{outfile}_reader{tidx}_processor{0}.vcf'
+                blending(whole_df, outfile, pidx, 0, n_samples)
+                thread_out = f'{outfile}_P{pidx}_T{0}.vcf'
                 with open(thread_out, 'r') as fh:
                     for line in fh:
                         repeat_info = line.strip().split('\t')
@@ -448,8 +449,8 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, tidx, process_t
         thread_pool.clear()
 
         # print('Concatenating processor files..............')
-        for each_thread in range(process_thread):
-            thread_out = f'{outfile}_reader{tidx}_processor{each_thread}.vcf'
+        for tidx in range(threads):
+            thread_out = f'{outfile}_P{pidx}_T{tidx}.vcf'
             # print('opening ', thread_out)
             with open(thread_out, 'r') as fh:
                 for line in fh:

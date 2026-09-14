@@ -76,7 +76,6 @@ def run_merge(args):
     :param args: Parsed command-line arguments
     :return: None
     """
-    print('atarva', ' '.join(sys.argv[1:]))
 
     start_time = ti.default_timer()
 
@@ -87,14 +86,12 @@ def run_merge(args):
 
     out = sys.stdout
     if args.output:
-        if '.vcf' == args.output[-4:]:
-            out = f'{args.output}'[:-4]
-        elif args.output[-1]=='/':
-            out = args.output + "atarva_merged"
+        if args.output[-1]=='/':
+            out = args.output + "atarva_merged.vcf"
         else:
             out = f'{args.output}'
     else:
-        out = "atarva_merged"
+        out = "atarva_merged.vcf"
 
     vcf_list = []
     if len(args.vcfs) == 1:
@@ -161,14 +158,14 @@ def run_merge(args):
         partition = len(fetcher) // nprocs
         initial = 0
         track = partition
-        for tidx in range(nprocs):
-            if tidx == nprocs - 1:
+        for pidx in range(nprocs):
+            if pidx == nprocs - 1:
                 reader_contigs = fetcher[initial : ]
             else:
                 reader_contigs = fetcher[initial : track]
 
             t = Process(target = chop_tamatar, args = (out, region_file, ref_file, vcf_list, reader_contigs,
-                                                       tidx, thread_grps[tidx]))
+                                                       pidx, thread_grps[pidx]))
             t.start()
             thread_pool.append(t)
 
@@ -180,17 +177,15 @@ def run_merge(args):
         # emptying thread_pool
         thread_pool.clear()
         #sys.exit()
-        out = open(f'{out}.vcf', 'a')
+        out = open(out, 'a')
 
         print('Concatenating thread outputs!', file=sys.stderr)
-        for tidx in range(nprocs):
-            thread_out = f'{out}_thread_{tidx}.vcf'
+        for pidx in range(1, nprocs):
+            thread_out = f'{out.name}_P{pidx}.vcf'
             print(thread_out)
             with open(thread_out, 'r') as fh:
-                # if tidx!=0: next(fh)
                 for line in fh:
                     repeat_info = line.strip().split('\t')
-                    #print(*repeat_info, file=out, sep='\t')
                     out.write("\t".join(map(str, repeat_info)) + "\n")
             os.remove(thread_out)
         out.close()
