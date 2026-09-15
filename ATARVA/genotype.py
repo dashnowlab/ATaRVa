@@ -46,6 +46,7 @@ def genotype_parser(subparsers):
     # Input / Output
     opt.add_argument('-o', '--vcf',      metavar='<FILE>', default='',    help='output VCF file [default: stdout]')
     opt.add_argument('--aln-format',     metavar='<STR>',  default='bam', help='alignment format [cram | bam | sam] [default: bam]')
+    opt.add_argument('--fast',           action='store_true', help='fast mode: skip softclip processing [default: False]')
     opt.add_argument('--rna',            action='store_true', help='if the input alignment data is RNA-seq [default: False]')
     opt.add_argument('--instability',    action='store_true', help='generates read level allele information for each locus as TSV [default: False]')
     opt.add_argument('--contigs',        metavar='<STR>',  nargs='+', help='contigs to genotype e.g. chr1 chr12 [default: all]')
@@ -73,7 +74,6 @@ def genotype_parser(subparsers):
     opt.add_argument('--read-wise',      action='store_true', help='read-wise genotyping for dense BED regions')
     opt.add_argument('--locus-wise',     action='store_true', help='locus-wise genotyping for sparse BED regions')
     opt.add_argument('--decompose',      action='store_true', help='write motif-decomposed sequence to VCF')
-    opt.add_argument('--fast',           action='store_true', help='fast mode: skip softclip processing [default: False]')
 
     # Misc
     opt.add_argument('-t',   '--threads',      metavar='<INT>', type=int, default=1, help='number of threads [default: 1]')
