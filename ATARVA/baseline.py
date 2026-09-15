@@ -248,7 +248,8 @@ class Cooper:
                                     del self.cooper_snp_data[pos]
                                     self.cooper_sorted_snps.remove(pos)
                         del self.cooper_read_data[rindex]
-                        del self.cooper_insert_positions[rindex]
+                        if rindex in self.cooper_insert_positions:
+                            del self.cooper_insert_positions[rindex]
                         self.prev_reads.discard(rindex)
 
                 # --- region end reached ---
