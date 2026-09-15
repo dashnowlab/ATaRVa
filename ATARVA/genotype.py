@@ -73,6 +73,7 @@ def genotype_parser(subparsers):
     opt.add_argument('--read-wise',      action='store_true', help='read-wise genotyping for dense BED regions')
     opt.add_argument('--locus-wise',     action='store_true', help='locus-wise genotyping for sparse BED regions')
     opt.add_argument('--decompose',      action='store_true', help='write motif-decomposed sequence to VCF')
+    opt.add_argument('--fast',           action='store_true', help='fast mode: skip softclip processing [default: False]')
 
     # Misc
     opt.add_argument('-t',   '--threads',      metavar='<INT>', type=int, default=1, help='number of threads [default: 1]')
