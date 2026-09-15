@@ -1,6 +1,7 @@
 import sys
 import pysam
 from ATARVA.decompose import motif_decomposition
+from ATARVA.version import __version__
 
 
 INFO_MP_CUTOFF = 0.5
@@ -21,7 +22,7 @@ def vcf_writer(out, bam, bam_name):
     vcf_header = pysam.VariantHeader()
 
     # command
-    vcf_header.add_line(f"##command=ATaRVa_0.7.1+ext0.01 {' '.join(sys.argv)}")
+    vcf_header.add_line(f"##command=ATaRVa_{__version__} {' '.join(sys.argv)}")
 
     for contig in bam.header['SQ']:
         vcf_header.contigs.add(contig['SN'], length=contig['LN'])

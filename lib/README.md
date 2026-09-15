@@ -1,5 +1,5 @@
 # ATaRVa - a tandem repeat genotyper
-![Badge-PyPI](https://img.shields.io/badge/PyPI-v0.9.1-brightgreen)
+![Badge-PyPI](https://img.shields.io/badge/PyPI-v{{VERSION}}-brightgreen)
 ![Badge-License](https://img.shields.io/badge/License-MIT-blue)
 
 <p>

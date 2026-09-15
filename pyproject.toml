@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ATaRVa"
-version = "0.7.1+ext0.01"
+version = "0.9.1"
 description = "Analysis of Tandem Repeats Variations"
 readme = "README.md"
 license = "MIT"
@@ -44,7 +44,6 @@ classifiers = [
 ]
 requires-python = ">=3.9.5,<=3.13.9"
 
-
 [project.urls]
 Repository = "https://github.com/sowpatilab/ATaRVa.git"
 
@@ -55,4 +54,4 @@ packages = ["ATARVA"]
 ATARVA = ["*.so"]
 
 [project.scripts]
-atarva-ext = "ATARVA.core:main"
+atarva = "ATARVA.core:main"
