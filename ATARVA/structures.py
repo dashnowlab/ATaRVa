@@ -32,6 +32,7 @@ class LocusInfo:
     start:        int = 0
     end:          int = 0
     motif:        str = ''
+    motifs:       list = field(default_factory=list)
     length:       int = 0
     motif_length: int = 0
     name:         str = None

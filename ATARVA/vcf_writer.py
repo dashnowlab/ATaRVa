@@ -30,7 +30,7 @@ def vcf_writer(args, out, bam, bam_name):
         vcf_header.add_line('##reference={}'.format(bam.header.get('SQ', [{}])[0].get('SN', 'unknown')))
 
     # command
-    vcf_header.add_line(f"##command=atarva {' '.join(sys.argv[1:])}")
+    vcf_header.add_line(f"##command=ATaRVa_{__version__} {' '.join(sys.argv)}")
 
     for contig in bam.header['SQ']:
         vcf_header.contigs.add(contig['SN'], length=contig['LN'])

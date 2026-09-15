@@ -5,7 +5,7 @@ import sys, os, logging
 from pathlib import Path
 from tqdm import tqdm
 from sortedcontainers import SortedList
-from collections import deque
+from collections import deque, defaultdict
 
 from ATARVA.decompose import motif_decomposition
 from ATARVA.structures        import ReadLocusInfo, LocusInfo, ReadInfo, LocusVariation, ExtendedRead
@@ -184,7 +184,7 @@ class Cooper:
         self.cooper_read_indices     = deque()
         self.prev_reads              = set()
         self.cooper_sorted_snps      = SortedList()
-        self.cooper_insert_positions = set()
+        self.cooper_insert_positions = defaultdict(set)
 
     # --- read processing ---
 
@@ -207,6 +207,7 @@ class Cooper:
         NONREP_FLANK    = 30        # Minimum non-repetitive flank considered for locus processing from softclip region
 
         softclip_mode   = True
+        if self.args.fast: softclip_mode = False
         DROP_DISTANCE   = 0 if softclip_mode else 100000    # distance beyond which reads and loci are dropped from memory
 
         with PysamWarningCapture(self.logfile):
@@ -246,12 +247,9 @@ class Cooper:
                                     del self.cooper_snp_data[pos]
                                     self.cooper_sorted_snps.remove(pos)
                         del self.cooper_read_data[rindex]
+                        if rindex in self.cooper_insert_positions:
+                            del self.cooper_insert_positions[rindex]
                         self.prev_reads.discard(rindex)
-
-                    # evict expired insert positions
-                    self.cooper_insert_positions = {
-                        p for p in self.cooper_insert_positions if p > read_end
-                    }
 
                 # --- region end reached ---
                 if fetch_start > region_end:
