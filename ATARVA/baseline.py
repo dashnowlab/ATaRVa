@@ -109,8 +109,7 @@ class Cooper:
         if args.instability: self.ins_handle = open(self.insfile, 'w')
 
         if is_primary:
-            vcf_writer(self.outhandle, self.bam,
-                       Path(bam_file).stem)
+            vcf_writer(self.args, self.outhandle, self.bam, Path(bam_file).stem)
 
         # --- logging ---
         if args.debug_mode:
