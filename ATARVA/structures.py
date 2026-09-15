@@ -39,7 +39,8 @@ class LocusInfo:
 
     def __post_init__(self):
         self.length       = self.end - self.start
-        self.motif_length = len(self.motif)
+        self.motifs       = [x.strip() for x in self.motif.split(',')]
+        self.motif_length = len(self.motifs[0])
 
 @dataclass(slots=True)
 class ReadInfo:
