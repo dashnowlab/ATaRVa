@@ -103,6 +103,7 @@ class LocusVariation:
     allele_lengths:    list  = field(default_factory=list)  # list of allele lengths for the reads supporting the locus
     min_read_qual:     float = float('inf')                            # minimum read quality among the reads supporting the locus
     min_qual_read:     int   = None          # index of the read with minimum read quality among the reads supporting the locus
+    flank_var:         bool  = False         # whether the locus has variants in the flanking region
 
     neighbors:        set   = field(default_factory=set)    # positions of neighbouring loci with shared reads
 

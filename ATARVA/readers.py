@@ -99,13 +99,13 @@ def check_alnfile(bamfile, args):
     aln_file.close()
 
     srs = False
-    if (args.read_wise and args.locus_wise):
-        print('Error: Choose either Read-wise or Loci-wise genotyping mode!!')
-        sys.exit()
-    elif args.locus_wise:
-        srs = True
-        print('Processing in Loci-wise genotyping mode...')
-    else:
-        srs = False
-        print('Processing in Read-wise genotyping mode...')
+    # if (args.read_wise and args.locus_wise):
+    #     print('Error: Choose either Read-wise or Loci-wise genotyping mode!!')
+    #     sys.exit()
+    # elif args.locus_wise:
+    #     srs = True
+    #     print('Processing in Loci-wise genotyping mode...')
+    # else:
+    #     srs = False
+    #     print('Processing in Read-wise genotyping mode...')
     return srs

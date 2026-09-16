@@ -3,6 +3,11 @@ from pathlib import Path
 __version__ = "0.9.1"
 
 def update_version(version):
+    """
+    Updating the version number in pyproject.toml and README.md files.
+
+    :param version: The new version number.
+    """
     lines = []
 
     path = str(Path(__file__).parent.resolve()) + '/../'
@@ -24,6 +29,7 @@ def update_version(version):
 
     with open(f"{path}README.md", "w") as f:
         f.writelines(lines)
+
 
 if __name__ == "__main__":
     print(f"Updating version to {__version__}")

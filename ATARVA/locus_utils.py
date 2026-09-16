@@ -259,8 +259,12 @@ def process_locus(cooper, locus_key):
         new_qe, pend_r, ilr2, pi2, ci2 = process_flank_insertions(right_ins, ref_allele, ref_length, query, locus,
                                                                   locus_data.neighbors, cooper.cooper_insert_positions[read_index], is_left=False)
 
-        if new_qs is not None: adj_qs = new_qs
-        if new_qe is not None: adj_qe = new_qe
+        if cooper.args.strict:
+            if len(pend_l) > 0 or len(pend_r) > 0:
+                locus_data.flank_var = True
+        else:
+            if new_qs is not None: adj_qs = new_qs
+            if new_qe is not None: adj_qe = new_qe
 
         ILR += ilr + ilr2
         PI  += pi  + pi2
