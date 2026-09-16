@@ -17,7 +17,7 @@ contact = """\nFor queries or suggestions, please contact:
 Akshay Kumar Avvaru - avvaruakshay at gmail dot com"""
 
 def main():
-    parser = ap.ArgumentParser(prog="atarva-ext",
+    parser = ap.ArgumentParser(prog="atarva",
                                add_help=False,
                                formatter_class=ap.RawTextHelpFormatter)
 
@@ -37,7 +37,7 @@ def main():
 
     if args.command is None:
         print("Usage:")
-        print("    atarva-ext [OPTIONS] <COMMAND>\n")
+        print("    atarva [OPTIONS] <COMMAND>\n")
         print("Commands:")
         for name, sp in subparsers.choices.items():
             print(f"  {name:<9} {sp.description}")
