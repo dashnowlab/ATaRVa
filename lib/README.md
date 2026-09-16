@@ -68,18 +68,18 @@ Both of the methods add a console command `atarva`, which can be executed from a
 The help message and available subcommands can be accessed using
 
 ```bash
-$ atarva-ext -h
+$ atarva -h
 #  or
-$ atarva-ext --help
+$ atarva --help
 ```
 which gives the following output
 
 ```
 ATaRVa - Analysis of Tandem Repeat Variants
-Sowpati Lab
+Dashnow lab
 
 Usage:
-    atarva-ext [OPTIONS] <COMMAND>
+    atarva [OPTIONS] <COMMAND>
 
 Commands:
   genotype  Tandem Repeat Genotyper
@@ -108,7 +108,7 @@ $ atarva genotype --help
 which gives the following output
 
 ```
-usage: atarva-ext genotype [-h] -f <FILE> -b <FILE> [<FILE> ...] -r <FILE> [-o <FILE>] [--aln-format <STR>] [--rna] [--instability] [--contigs <STR> [<STR> ...]] [--karyotype <STR> [<STR> ...]] [-q <INT>] [--min-reads <INT>]
+usage: atarva genotype [-h] -f <FILE> -b <FILE> [<FILE> ...] -r <FILE> [-o <FILE>] [--aln-format <STR>] [--rna] [--instability] [--contigs <STR> [<STR> ...]] [--karyotype <STR> [<STR> ...]] [-q <INT>] [--min-reads <INT>]
                            [--max-reads <INT>] [--flank <INT>] [--snp-dist <INT>] [--snp-count <INT>] [--snp-qual <INT>] [--snp-read <FLOAT>] [--phasing-read <FLOAT>] [--haplotag <STR>] [--meth-prob <FLOAT>] [--methviz] [--read-wise]
                            [--locus-wise] [--decompose] [-t <INT>] [-log] [-v]
 
@@ -126,6 +126,7 @@ Optional arguments:
   -o <FILE>, --vcf <FILE>
                         output VCF file [default: stdout]
   --aln-format <STR>    alignment format [cram | bam | sam] [default: bam]
+  --fast                fast mode: skip softclip processing [default: False]
   --rna                 if the input alignment data is RNA-seq [default: False]
   --instability         generates read level allele information for each locus as TSV [default: False]
   --contigs <STR> [<STR> ...]
