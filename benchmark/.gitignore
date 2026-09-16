@@ -1,0 +1,9 @@
+# Generated/downloaded -- regenerate with the scripts/ pipeline. Only scripts/ and the
+# baseline*.tsv files are meant to be committed.
+/atarva_env/
+/atarva_env_*/
+/data/
+/data_*/
+/research/
+/tools/
+__pycache__/
