@@ -146,34 +146,47 @@ def process_flank_insertions(flank_insertions, ref_allele, ref_length, query, lo
 
     for fid, (ins_rpos, ins_qs, ins_qe) in enumerate(flank_insertions):
         ins_len = ins_qe - ins_qs
-        if ins_len < locus.motif_length and ins_len < 10: continue
         if ins_rpos in insert_positions:                  continue  # if the insertion position is already recorded for another locus, skip
         if inrepeat_ins(locus_neighbors, ins_rpos, insert_positions): continue
 
-        insert          = query[ins_qs:ins_qe]
-        if insert == "": continue
-        alignment, coords = stripSW(Inputs(ref_allele, insert), True)
-        align_len       = len(alignment)
-        matches         = alignment.count('|')
-        min_len         = min(ins_len, ref_length)
+        include = False
+        check_pairs = [(ref_allele, locus.motif_length)]
+        for motif in locus.motifs:
+            check_pairs.append((motif, len(motif)))
 
-        if align_len <= round(0.2 * min_len): continue
+        for idx, motif, mlen in enumerate(check_pairs):
+            if ins_len < mlen and ins_len < 10: continue
 
-        if align_len >= ref_75 and matches >= round(0.75 * align_len):
-            ILR  += 1
-            adj_pos = ins_qs if is_left else ins_qe
-            included_insertions.add(ins_rpos)
+            if idx == 0: target = motif
+            else: target = motif * ((ins_len // mlen) + 2)
 
-        elif (matches   >= round(0.75 * align_len) and
-              align_len >= round(0.45 * ins_len)):
-            PI += 1 if align_len <= 0.5 * ins_len else 0
-            CI += 1 if align_len >  0.5 * ins_len else 0
-            if is_left and coords[1] >= round(0.7 * ins_len):
-                adj_pos = ins_qs + coords[0]
+            insert          = query[ins_qs:ins_qe]
+            if insert == "": continue
+            alignment, coords = stripSW(Inputs(target, insert), True)
+            align_len       = len(alignment)
+            matches         = alignment.count('|')
+            min_len         = min(ins_len, ref_length)
+
+            if align_len <= round(0.2 * min_len): continue
+
+            if align_len >= ref_75 and matches >= round(0.75 * align_len):
+                ILR  += 1
+                adj_pos = ins_qs if is_left else ins_qe
                 included_insertions.add(ins_rpos)
-            elif not is_left and coords[0] <= round(0.3 * ins_len):
-                adj_pos = ins_qs + coords[1]
-                included_insertions.add(ins_rpos)
+                break
+
+            elif (matches   >= round(0.75 * align_len) and
+                align_len >= round(0.45 * ins_len)):
+                PI += 1 if align_len <= 0.5 * ins_len else 0
+                CI += 1 if align_len >  0.5 * ins_len else 0
+                if is_left and coords[1] >= round(0.7 * ins_len):
+                    adj_pos = ins_qs + coords[0]
+                    included_insertions.add(ins_rpos)
+                    break
+                elif not is_left and coords[0] <= round(0.3 * ins_len):
+                    adj_pos = ins_qs + coords[1]
+                    included_insertions.add(ins_rpos)
+                    break
     
     return adj_pos, included_insertions, ILR, PI, CI
 
