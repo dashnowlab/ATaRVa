@@ -894,11 +894,11 @@ def process_flank_stretches(cooper, read, softclip_loci_coords):
     if len(softclip_loci_coords) == 0:
         return
 
-    prev_sofclip_dir = None
-    read_ref_start   = read.ref_start
-    read_ref_end     = read.ref_end
-    read_query_start = read.query_start
-    read_query_end   = read.query_end
+    prev_softclip_dir = None
+    read_ref_start    = read.ref_start
+    read_ref_end      = read.ref_end
+    read_query_start  = read.query_start
+    read_query_end    = read.query_end
     for coords in softclip_loci_coords:
         ref_start   = coords['upstream'][0]
         ref_end     = coords['downstream'][1]
@@ -915,7 +915,7 @@ def process_flank_stretches(cooper, read, softclip_loci_coords):
         alignment = align_flank_stretch(cooper, read, coords, softclip_dir)
         if softclip_dir == 'upstream' and prev_query_end == 0 and query_start > 0:
             result['upstream'].append({'cigar': f'{query_start}S', 'md_tag': '', 'cs_tag': '', 'gap': True, 'flank_type': 'upstream'})
-        if prev_sofclip_dir == softclip_dir:
+        if prev_softclip_dir == softclip_dir:
             gap = False
             gap_cigar = ''
             gap_md    = ''
@@ -943,7 +943,7 @@ def process_flank_stretches(cooper, read, softclip_loci_coords):
 
         prev_ref_end = ref_end
         prev_query_end = query_end
-        prev_sofclip_dir = softclip_dir
+        prev_softclip_dir = softclip_dir
 
     upstream_cigar = ''; upstream_ref_end = 0; upstream_query_end = 0
     for aln in result['upstream']:
