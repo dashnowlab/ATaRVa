@@ -68,7 +68,7 @@ def record_ref_snps(cooper, new_reads, locus_start, locus_end):
             if pos > read.end: break
 
             # if a position has not ALT SNP and is not deleted in the read record it as reference
-            if (pos not in read.snps) and (bisect.bisect(read.dels, pos) % 2 == 0) and (pos not in read.no_snps):
+            if (pos not in read.snps) and (bisect.bisect(read.dels, pos) % 2 == 0): # and (pos not in read.no_snps):
                 cooper.cooper_snp_data[pos].ref.add(read_index)
                 cooper.cooper_snp_data[pos].cov += 1
 
@@ -142,6 +142,7 @@ def process_flank_insertions(flank_insertions, ref_allele, ref_length, query, lo
     adj_pos = None
 
     ref_75 = round(0.75 * ref_length)
+    included_insertions = set()
 
     for fid, (ins_rpos, ins_qs, ins_qe) in enumerate(flank_insertions):
         ins_len = ins_qe - ins_qs
@@ -161,8 +162,7 @@ def process_flank_insertions(flank_insertions, ref_allele, ref_length, query, lo
         if align_len >= ref_75 and matches >= round(0.75 * align_len):
             ILR  += 1
             adj_pos = ins_qs if is_left else ins_qe
-            pending.update(ins[0] for ins in flank_insertions[fid:])
-            break
+            included_insertions.add(ins_rpos)
 
         elif (matches   >= round(0.75 * align_len) and
               align_len >= round(0.45 * ins_len)):
@@ -170,14 +170,12 @@ def process_flank_insertions(flank_insertions, ref_allele, ref_length, query, lo
             CI += 1 if align_len >  0.5 * ins_len else 0
             if is_left and coords[1] >= round(0.7 * ins_len):
                 adj_pos = ins_qs + coords[0]
-                pending.update(ins[0] for ins in flank_insertions[fid:])
-                break
+                included_insertions.add(ins_rpos)
             elif not is_left and coords[0] <= round(0.3 * ins_len):
                 adj_pos = ins_qs + coords[1]
-                pending.update(ins[0] for ins in flank_insertions[fid:])
-                break
-
-    return adj_pos, pending, ILR, PI, CI
+                included_insertions.add(ins_rpos)
+    
+    return adj_pos, included_insertions, ILR, PI, CI
 
 
 def assign_hap_category(locus_data):
@@ -249,7 +247,7 @@ def process_locus(cooper, locus_key):
     # --- per read processing ---
     for read_index in read_indices:
         read = cooper.cooper_read_data[read_index]
-        query, relative_qrange, left_ins, right_ins, fqs, fqe = locus_data.read_aseqs[read_index]
+        query, relative_qrange, left_ins, right_ins, left_dels, right_dels, fqs, fqe = locus_data.read_aseqs[read_index]
         adj_qs, adj_qe = relative_qrange
 
         left_ins.sort(key=lambda x: x[0])
@@ -257,12 +255,16 @@ def process_locus(cooper, locus_key):
 
         # process flanks
         new_qs, pend_l, ilr, pi, ci    = process_flank_insertions(left_ins,  ref_allele, ref_length, query, locus,
-                                                                  locus_data.neighbors, cooper.cooper_insert_positions, is_left=True)
+                                                                  locus_data.neighbors, cooper.cooper_insert_positions[read_index], is_left=True)
         new_qe, pend_r, ilr2, pi2, ci2 = process_flank_insertions(right_ins, ref_allele, ref_length, query, locus,
-                                                                  locus_data.neighbors, cooper.cooper_insert_positions, is_left=False)
+                                                                  locus_data.neighbors, cooper.cooper_insert_positions[read_index], is_left=False)
 
-        if new_qs is not None: adj_qs = new_qs
-        if new_qe is not None: adj_qe = new_qe
+        if cooper.args.strict:
+            if len(pend_l) > 0 or len(pend_r) > 0:
+                locus_data.flank_var = True
+        else:
+            if new_qs is not None: adj_qs = new_qs
+            if new_qe is not None: adj_qe = new_qe
 
         ILR += ilr + ilr2
         PI  += pi  + pi2
@@ -278,16 +280,16 @@ def process_locus(cooper, locus_key):
         adj_fqe        = fqe - (subseq_len - adj_qe)
 
         locus_data.read_methylation[read_index] = read.process_methylation_info(adj_fqs, adj_fqe, lower_bound, upper_bound)
+        cooper.cooper_insert_positions[read_index] |= pending_insertions
 
     if cooper.args.debug_mode:
         cooper.logger.debug(f"{locus_key};Larger_ins={ILR};Partial_ins={PI};Complete_ins={CI}")
 
-    cooper.cooper_insert_positions |= pending_insertions
     count_alleles(cooper, locus_key) # updates frequency of allele lengths in cooper.cooper_loci_data[locus_key]
 
     record_ref_snps(cooper, new_reads, locus.start, locus.end)
 
-    if cooper.args.haplotag:
+    if cooper.args.haplotag and (len(set(locus_data.read_haplotag_ps.values())) == 1 and None not in set(locus_data.read_haplotag_ps.values())):
         hap1, hap2 = [], []
         for read_idx in read_indices:
             tag = locus_data.read_haplotags[read_idx]

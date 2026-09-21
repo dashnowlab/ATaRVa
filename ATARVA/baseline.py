@@ -207,7 +207,7 @@ class Cooper:
 
         softclip_mode   = True
         if self.args.fast: softclip_mode = False
-        DROP_DISTANCE   = 0 if softclip_mode else 100000    # distance beyond which reads and loci are dropped from memory
+        DROP_DISTANCE   = 100000 if softclip_mode else 0    # distance beyond which reads and loci are dropped from memory
 
         with PysamWarningCapture(self.logfile):
             for raw_read in self.bam.fetch(chrom, region_start, region_end):
