@@ -63,7 +63,7 @@ def haplocluster_reads(cooper, locus_key):
 
     for pos in del_positions:
         del relevant_snp_data[pos]
-    ordered_snp_on_cov = sorted(relevant_snp_data.keys(), key = lambda item : alt_snp_cov[item], reverse = True)
+    ordered_snp_on_cov = sorted(relevant_snp_data.keys(), key = lambda item : relevant_snp_data[item]['cov'] + alt_snp_cov[item], reverse = True)
 
     sig_snp_data    = {}
     ordered_sig_snps = []

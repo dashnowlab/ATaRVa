@@ -126,7 +126,7 @@ Optional arguments:
   -o <FILE>, --vcf <FILE>
                         output VCF file [default: stdout]
   --aln-format <STR>    alignment format [cram | bam | sam] [default: bam]
-  --fast                fast mode: skip softclip processing [default: False]
+  --skip-softclip       skip softclip processing [default: False]
   --rna                 if the input alignment data is RNA-seq [default: False]
   --instability         generates read level allele information for each locus as TSV [default: False]
   --contigs <STR> [<STR> ...]

@@ -68,7 +68,7 @@ def record_ref_snps(cooper, new_reads, locus_start, locus_end):
             if pos > read.end: break
 
             # if a position has not ALT SNP and is not deleted in the read record it as reference
-            if (pos not in read.snps) and (bisect.bisect(read.dels, pos) % 2 == 0) and (pos not in read.no_snps):
+            if (pos not in read.snps) and (bisect.bisect(read.dels, pos) % 2 == 0): # and (pos not in read.no_snps):
                 cooper.cooper_snp_data[pos].ref.add(read_index)
                 cooper.cooper_snp_data[pos].cov += 1
 
@@ -186,7 +186,7 @@ def assign_hap_category(locus_data):
     :return: None (updates the locus_data.hap_category in place)
     """
 
-    if locus_data.is_phased and (list(locus_data.read_haplotags.values()).count(None) / locus_data.depth) <= 0.15:
+    if locus_data.is_genotyped and (list(locus_data.read_haplotags.values()).count(None) / locus_data.depth) <= 0.15:
         locus_data.hap_category = 3 # phased based on haplotag
         return
 
@@ -247,7 +247,7 @@ def process_locus(cooper, locus_key):
     # --- per read processing ---
     for read_index in read_indices:
         read = cooper.cooper_read_data[read_index]
-        query, relative_qrange, left_ins, right_ins, fqs, fqe = locus_data.read_aseqs[read_index]
+        query, relative_qrange, left_ins, right_ins, left_dels, right_dels, fqs, fqe = locus_data.read_aseqs[read_index]
         adj_qs, adj_qe = relative_qrange
 
         left_ins.sort(key=lambda x: x[0])
