@@ -171,7 +171,6 @@ class Cooper:
         if self.args.instability: self.ins_handle.close()
 
     # --- state management ---
-
     def _reinitialise(self):
         """Reset per-region tracking state."""
         self.cooper_snp_data         = {}
@@ -185,9 +184,9 @@ class Cooper:
         self.prev_reads              = set()
         self.cooper_sorted_snps      = SortedList()
         self.cooper_insert_positions = defaultdict(set)
+        self.cooper_del_positions    = defaultdict(set)
 
     # --- read processing ---
-
     def cooper_readmode(self, region_range: tuple, cidx: int):
         """
         Genotype a range of loci by streaming through reads.
@@ -281,7 +280,7 @@ class Cooper:
 
                     if not (first_coords[0] <= locus_start and locus_end <= last_coords[1]):
                         continue
-                    
+
                     # check if the locus is outside the read's reference boundaries check if it's in the softclipped region
                     softclip_result = None
                     if softclip_mode and (locus_start < read.ref_start or locus_end > read.ref_end):
@@ -300,7 +299,7 @@ class Cooper:
                             softclip_loci['loci'].append((chrom, locus_start, locus_end))
                             softclip_loci['coords'].append(softclip_result)
                             softclip_loci['flags'].append('FLANK_ORDER_INVALID')
-                    if not (read.ref_start <= locus_start and locus_end <= read.ref_end) and not softclip_result:
+                    if not (read.ref_start <= locus_start and locus_end <= read.ref_end) and softclip_result is not None:
                         continue
 
                     left_flank  = min(self.args.flank, clamp_zero(locus_start - read.ref_start))
@@ -324,7 +323,7 @@ class Cooper:
                 if not read.loci_coords:
                     continue
 
-                if softclip_loci['coords']:
+                if softclip_mode and softclip_loci['coords']:
                     merged_coords = []
                     if sum([flag is None for flag in softclip_loci['flags']]) >= 1:
                         merged_coords = process_flanks(softclip_loci, read.ref_start, read.ref_end)
@@ -550,7 +549,7 @@ class Cooper:
                     locus_data.hap_meth_data   = (locus_data.hap_meth_data[0], meth_data)
                     if decomp_seq is not None:
                         locus_data.gt_decomp_seqs  = (locus_data.gt_decomp_seqs[0], decomp_seq)
- 
+
             (l1, u1) = np.percentile(alen_lists[0], [2.5, 97.5])
             (l2, u2) = np.percentile(alen_lists[1], [2.5, 97.5])
             allele_range = f'{l1}-{u1},{l2}-{u2}'

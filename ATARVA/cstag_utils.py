@@ -23,6 +23,8 @@ def parse_cstag(cooper, read):
     flank_query_range = [[0, 0] for _ in read.loci_coords]
     left_flank_insertions  = [[] for _ in read.loci_coords] # stores insertions in left flank as (rpos, qstart, qend)
     right_flank_insertions = [[] for _ in read.loci_coords] # stores insertions in right flank as (rpos, qstart, qend)
+    left_flank_deletions   = [[] for _ in read.loci_coords] # stores deletions in left flank as (rpos, qstart, qend)
+    right_flank_deletions  = [[] for _ in read.loci_coords] # stores
     locus_reached = [False for _ in read.loci_coords]
     locus_boundary_crossed = [[False,False] for _ in read.loci_coords]
 
@@ -124,7 +126,8 @@ def parse_cstag(cooper, read):
                 cooper_read_data[read_index].dels.extend([rpos, rpos + deletion_len])
                 cooper_read_data[read_index].no_snps.update(range(rpos-no_snp_range, rpos + deletion_len + 1 + no_snp_range))
             rpos += deletion_len
-            repeat_index += deletion_jump(read, rpos, qpos, deletion_len, repeat_index, locus_query_range, flank_query_range, locus_reached, locus_boundary_crossed)
+            repeat_index += deletion_jump(read, rpos, qpos, deletion_len, repeat_index, locus_query_range, flank_query_range,
+                                          locus_reached, locus_boundary_crossed, left_flank_deletions, right_flank_deletions)
 
         elif read.cs_tag[i] == '~':      # deletion; is followed by the deleted bases
             deletion_len = ''; i += 1
@@ -153,6 +156,8 @@ def parse_cstag(cooper, read):
 
         left_flank_insertions[idx]  = [(coords[0], coords[1] - flank_query_start, coords[2] - flank_query_start) for coords in left_flank_insertions[idx] ]
         right_flank_insertions[idx] = [(coords[0], coords[1] - flank_query_start, coords[2] - flank_query_start) for coords in right_flank_insertions[idx] ]
+        left_flank_deletions[idx]   = [(coords[0], coords[1]) for coords in left_flank_deletions[idx] ]
+        right_flank_deletions[idx]  = [(coords[0], coords[1]) for coords in right_flank_deletions[idx] ]
         read.loci_data[locus_key].seq = [read.query_sequence[flank_query_start:flank_query_end],
                                          locus_query_range[idx],
                                          left_flank_insertions[idx],

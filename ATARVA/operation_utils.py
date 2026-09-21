@@ -151,7 +151,9 @@ def match_jump(read, match_refend, match_qryend, match_length, repeat_index, loc
     return jump
 
 
-def deletion_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_query_range, flank_query_range, locus_reached, locus_boundary_crossed):
+def deletion_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_query_range,
+                  flank_query_range, locus_reached, locus_boundary_crossed, left_flank_deletions,
+                  right_flank_deletions):
     """
     process a deletion and update data for affected repeats
 
@@ -175,7 +177,7 @@ def deletion_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_quer
 
         flank_start, flank_end = coord  # the locus coordinates include flanks
         locus_start = flank_start + read.left_flanks[current_index]
-        locus_end = flank_end - read.right_flanks[current_index]
+        locus_end   = flank_end   - read.right_flanks[current_index]
 
         # if rpos is before the start of the repeat; repeat is unaffected
         if del_refend < flank_start: break
@@ -237,6 +239,16 @@ def deletion_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_quer
                     read.loci_data[locus_key].alen  -= del_len
                     read.loci_data[locus_key].halen -= del_len
 
+        del_coords = set(range(del_refstart, del_refend))
+        left_flank_coords = set(range(flank_start, locus_start))
+        right_flank_coords = set(range(locus_end+1, flank_end+1))
+        left_dels  = sorted(del_coords.intersection(left_flank_coords))
+        right_dels = sorted(del_coords.intersection(right_flank_coords))
+        if del_coords.intersection(left_flank_coords):
+            left_flank_deletions[current_index].append((left_dels[0], left_dels[-1]))
+        if del_coords.intersection(right_flank_coords):
+            right_flank_deletions[current_index].append((right_dels[0], right_dels[-1]))
+
     jump = 0    # jump beyond the repeat where all positions are tracked
     if read.loci_coords[repeat_index + r - 1][1] < del_refend:
         for coord in read.loci_coords[repeat_index:]:
@@ -246,7 +258,8 @@ def deletion_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_quer
     return jump
 
 
-def N_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_query_range, flank_query_range, locus_reached, locus_boundary_crossed, N_skip_loci):
+def N_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_query_range, flank_query_range,
+           locus_reached, locus_boundary_crossed, N_skip_loci):
     """
     process a deletion and update data for affected repeats
 
@@ -279,8 +292,6 @@ def N_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_query_range
         if del_refstart > flank_end: continue
 
         locus_key = read.loci_keys[current_index]
-        if  locus_key == 'chr1:chr1:983455-983478':
-            print(read.index)
         if not locus_reached[current_index]:
             # if the locus is not tracked so far
             if locus_start <= del_refend:    
@@ -316,6 +327,8 @@ def N_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_query_range
             if locus_end <= del_refend:
                 locus_query_range[current_index][1] = qpos
                 if del_refend > locus_end: locus_boundary_crossed[current_index][1] = True
+
+        
 
         # if deletion does not overlap the repeat; skip
         if del_refend < locus_start or del_refstart > locus_end:
