@@ -46,7 +46,7 @@ def genotype_parser(subparsers):
     # Input / Output
     opt.add_argument('-o', '--vcf',      metavar='<FILE>', default='',    help='output VCF file [default: stdout]')
     opt.add_argument('--aln-format',     metavar='<STR>',  default='bam', help='alignment format [cram | bam | sam] [default: bam]')
-    opt.add_argument('--fast',           action='store_true', help='fast mode: skip softclip processing [default: False]')
+    opt.add_argument('--skip-softclip',  action='store_true', help='skip softclip processing [default: False]')
     opt.add_argument('--instability',    action='store_true', help='generates read level allele information for each locus as TSV [default: False]')
     opt.add_argument('--contigs',        metavar='<STR>',  nargs='+', help='contigs to genotype e.g. chr1 chr12 [default: all]')
     opt.add_argument('--karyotype',      metavar='<STR>',  nargs='+', help='sample karyotypes e.g. XY XX')
