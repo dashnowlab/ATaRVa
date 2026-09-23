@@ -47,7 +47,6 @@ def genotype_parser(subparsers):
     opt.add_argument('-o', '--vcf',      metavar='<FILE>', default='',    help='output VCF file [default: stdout]')
     opt.add_argument('--aln-format',     metavar='<STR>',  default='bam', help='alignment format [cram | bam | sam] [default: bam]')
     opt.add_argument('--skip-softclip',  action='store_true', help='skip softclip processing [default: False]')
-    opt.add_argument('--instability',    action='store_true', help='generates read level allele information for each locus as TSV [default: False]')
     opt.add_argument('--contigs',        metavar='<STR>',  nargs='+', help='contigs to genotype e.g. chr1 chr12 [default: all]')
     opt.add_argument('--karyotype',      metavar='<STR>',  nargs='+', help='sample karyotypes e.g. XY XX')
 
@@ -71,7 +70,6 @@ def genotype_parser(subparsers):
 
     # Modes
     # opt.add_argument('--read-wise',      action='store_true', help='read-wise genotyping for dense BED regions')
-    opt.add_argument('--rna',            action='store_true', help='if the input alignment data is RNA-seq [default: False]')
     opt.add_argument('--decompose',      action='store_true', help='write motif-decomposed sequence to VCF')
     opt.add_argument('--amplicon',       action='store_true', help="genotype mode for target-amplified high depth sequencing of pathogenic regions. This mode"
                                                                    " first uses KDE clustering for genotyping [default: False]")
@@ -171,14 +169,13 @@ def sample_stem(bam_path: str) -> str:
     return Path(bam_path).stem
 
 
-def concat_thread_outputs(base_path: str, n_threads: int, debug: bool = False, instability: bool = False) -> None:
+def concat_thread_outputs(base_path, n_threads, debug=False):
     """
     Concatenate per-thread VCF (and optionally log) outputs into a single file.
 
     :param base_path: base output path (no extension)
     :param n_threads: total number of threads
     :param debug:     whether to also concatenate debug logs
-    :param instability: whether to also concatenate instability metrics
     """
     parent   = Path(base_path).parent
     stem     = Path(base_path).name
@@ -205,15 +202,6 @@ def concat_thread_outputs(base_path: str, n_threads: int, debug: bool = False, i
                     for line in fh:
                         print(line.strip(), file=out_log)
                 os.remove(thread_log)
-
-    if instability:
-        with open(f'{base_path}_instability.tsv', 'a') as out_ins:
-            for tidx in range(1, n_threads):
-                thread_ins = f'{hidden}_instability_{tidx}.tsv'
-                with open(thread_ins) as fh:
-                    for line in fh:
-                        print(line.strip(), file=out_ins)
-                os.remove(thread_ins)
 
 
 def genotype_run(args) -> None:
@@ -329,7 +317,7 @@ def genotype_run(args) -> None:
 
             # ── only concat if all threads succeeded ─────────────────────────
             if all_success:
-                concat_thread_outputs(out_file, args.threads, debug=args.debug_mode, instability=args.instability)
+                concat_thread_outputs(out_file, args.threads, debug=args.debug_mode)
             else:
                 print(f'Skipping concat — {len(errors)} thread(s) failed:',
                     file=sys.stderr)

@@ -82,14 +82,10 @@ class Cooper:
         if is_primary:
             self.outfile = f'{out_file}.vcf'
             self.logfile = f'{out_file}_debug.log'
-            if args.instability:
-                self.insfile = f'{out_file}_instability.jsonl'
         else:
             hidden = _hidden_path(out_file)
             self.outfile = f'{hidden}_thread_{thread_idx}.vcf'
             self.logfile = f'{hidden}_debug_{thread_idx}.log'
-            if args.instability:
-                self.insfile = f'{hidden}_instability_{thread_idx}.jsonl'
 
         with PysamWarningCapture(self.logfile):
             self.tbx = pysam.Tabixfile(args.regions)
@@ -106,7 +102,6 @@ class Cooper:
         self.logger     = None
 
         self.outhandle = open(self.outfile, 'w')
-        if args.instability: self.ins_handle = open(self.insfile, 'w')
 
         if is_primary:
             vcf_writer(self.args, self.outhandle, self.bam, Path(bam_file).stem)
@@ -168,7 +163,6 @@ class Cooper:
         self.ref.close()
         self.tbx.close()
         self.outhandle.close()
-        if self.args.instability: self.ins_handle.close()
 
     # --- state management ---
     def _reinitialise(self):
@@ -368,8 +362,6 @@ class Cooper:
 
                 # --- methylation extraction ---
                 mod_bases = ()
-                if not self.args.rna:
-                    mod_bases = (list(read.modified_bases.items()) if read.modified_bases else [])
 
                 if read.has_tag('cs'):
                     parse_cstag(self, read)
@@ -389,7 +381,6 @@ class Cooper:
                     if ldata.depth >= self.args.max_reads:
                         if read.mean_qual > ldata.min_read_qual:
                             ldata.reads.append(read.index)
-                            if self.args.instability: ldata.read_names.append(read.query_name)
                             ldata.depth += 1
                             ldata.read_alens[read.index]     = [locus_read_info.halen, locus_read_info.alen]
                             ldata.read_aseqs[read.index]     = locus_read_info.seq
@@ -412,7 +403,6 @@ class Cooper:
 
                     else:
                         ldata.reads.append(read.index)
-                        if self.args.instability: ldata.read_names.append(read.query_name)
                         ldata.depth += 1
                         ldata.read_alens[read.index]     = [locus_read_info.halen, locus_read_info.alen]
                         ldata.read_aseqs[read.index]     = locus_read_info.seq
@@ -561,26 +551,6 @@ class Cooper:
         else:
             if locus_data.skip_code == 0:
                 write_fail_call(self, locus_key)
-
-        if self.args.instability and locus_data.is_genotyped:
-            instability_info = []
-            hap_als = [locus_data.gt_alens[0], locus_data.gt_alens[1]]
-            for i, rid in enumerate(locus_data.reads):
-                read_name = locus_data.read_names[i]
-                aseq = locus_data.read_aseqs[rid][0]
-                alen = len(aseq)
-                hap = 0
-                if not self.haploid: hap = 0 if rid in locus_data.hap_read_sets[0] else 1
-
-                methyl_Cs = None; methyl_probab = None
-                if i in locus_data.read_methylation and  locus_data.read_methylation[i] is not None:
-                    methyl_Cs = len(locus_data.read_methylation[i][1])
-                    methyl_probab = locus_data.read_methylation[i][0]
-
-                instability_info.append((read_name, hap, alen, aseq, methyl_Cs, methyl_probab))
-            instability_info.sort(key=lambda x: x[1]) # sort by read name for consistent output
-            for read_name, hap, alen, aseq, methyl_Cs, methyl_probab in instability_info:
-                self.ins_handle.write(f"{locus.chrom}\t{locus.start}\t{locus.end}\t{locus.motif}\t{read_name}\t{hap}\t{hap_als[hap]}\t{alen}\t{aseq}\t{methyl_Cs}\t{methyl_probab}\n")
 
         # --- cleanup ---
         del self.cooper_loci_data[locus_key]
