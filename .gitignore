@@ -5,3 +5,5 @@
 /atarva_env/*
 .DS_store
 /test_data/*
+/scripts/*
+/notebooks/*

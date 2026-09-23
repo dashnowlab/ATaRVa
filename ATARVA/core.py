@@ -14,7 +14,9 @@ from ATARVA.merge import merge_parser
 from ATARVA.version import __version__
 
 contact = """\nFor queries or suggestions, please contact:
-Akshay Kumar Avvaru - avvaruakshay at gmail dot com"""
+Akshay Kumar Avvaru - avvaruakshay at gmail dot com
+Harriet Dashnow - harriet dot dashnow at cuanschutz dot edu"""
+
 
 def main():
     parser = ap.ArgumentParser(prog="atarva",

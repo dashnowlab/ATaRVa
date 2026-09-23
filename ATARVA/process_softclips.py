@@ -7,7 +7,14 @@ from ATARVA.validation_tests import *
 
 
 def build_kmer_automaton(seq: str, k: int = 10):
-    """Build once per sequence X."""
+    """
+    Build an Aho-Corasick automaton for fast k-mer matching in a sequence.
+
+    :param seq: input sequence
+    :param k:   length of k-mers to build the automaton
+    :return:    Aho-Corasick automaton
+    """
+
     A = ahocorasick.Automaton()
     for i in range(len(seq) - k + 1):
         A.add_word(seq[i:i + k], (i, seq[i:i + k]))
@@ -16,19 +23,14 @@ def build_kmer_automaton(seq: str, k: int = 10):
 
 
 def has_kmer_match(automaton, Y: str) -> bool:
-    """Fast existence check — O(|Y|)."""
+    """
+    Fast existence check — O(|Y|).
+    
+    :param automaton: Aho-Corasick automaton
+    :param Y:         query sequence
+    :return:          True if any k-mer from Y is found in the automaton, False otherwise
+    """
     return any(automaton.iter(Y))
-
-
-
-def _mean(numbers):
-    """
-    calculate mean of a list of numbers
-
-    :param numbers: list of numbers
-    :return:        mean value
-    """
-    return float(sum(numbers)) / max(len(numbers), 1)
 
 
 def generate_cs_tag(query_seq, ref_seq, cigar):
@@ -38,7 +40,7 @@ def generate_cs_tag(query_seq, ref_seq, cigar):
 
     :param query_seq:    query/read sequence
     :param ref_seq:      reference sequence for the aligned region
-    :param cigartuples:  list of (op, length) cigar tuples
+    :param cigar:        CIGAR string
     :return:             CS tag string
     """
     cs   = []
