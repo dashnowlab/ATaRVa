@@ -86,16 +86,15 @@ def homozygous_call(cooper, locus_key):
 
     lower, upper = (round(x) for x in np.percentile(np.array(hap_lengths), [2.5, 97.5]))
 
-    ALT, allele_length, decomposed_seq, is_repetitive = alt_sequence(locus_data.read_aseqs, hap_reads, locus.motif_length)
-    # if not is_repetitive:
-    #     locus_data.skip_code = 6
-    #     return
+    ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
 
     locus_data.gt_aseqs        = (ALT, None)
     locus_data.gt_alens        = (allele_length, None)
-    locus_data.gt_decomp_seqs  = (decomposed_seq, None)
     locus_data.hap_meth_data   = (calculate_methylation(hap_reads, locus_data.read_methylation, ALT), None)
     locus_data.gt_arange       = (f'{lower}-{upper}', None)
+    if cooper.args.decompose and ALT != '<DEL>':
+        decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
+        locus_data.gt_decomp_seqs  = (decomp_seq, None)
 
     write_homozygous_call(cooper, locus_key)
     return
@@ -117,20 +116,24 @@ def heterozygous_call(cooper, locus_key):
     for i in range(2):
         hap_reads = hap_read_sets[i]
         hap_lengths = hap_alen_sets[i]
-        ALT, allele_length, decomp_seq, is_repetitive = alt_sequence(locus_data.read_aseqs, hap_reads, locus.motif_length)
+        ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
         lower, upper = (round(x) for x in np.percentile(np.array(hap_lengths), [2.5, 97.5]))
         if i == 0:
             locus_data.gt_aseqs         = (ALT, locus_data.gt_aseqs[1])
             locus_data.gt_alens         = (allele_length, locus_data.gt_alens[1])
-            locus_data.gt_decomp_seqs   = (decomp_seq, locus_data.gt_decomp_seqs[1])
             locus_data.hap_meth_data    = (calculate_methylation(hap_reads, locus_data.read_methylation, ALT), locus_data.hap_meth_data[1])
             locus_data.gt_arange        = (f'{lower}-{upper}', locus_data.gt_arange[1])
+            if cooper.args.decompose and ALT != '<DEL>':
+                decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
+                locus_data.gt_decomp_seqs   = (decomp_seq, locus_data.gt_decomp_seqs[1])
         else:
             locus_data.gt_aseqs         = (locus_data.gt_aseqs[0], ALT)
             locus_data.gt_alens         = (locus_data.gt_alens[0], allele_length)
-            locus_data.gt_decomp_seqs   = (locus_data.gt_decomp_seqs[0], decomp_seq)
             locus_data.hap_meth_data    = (locus_data.hap_meth_data[0], calculate_methylation(hap_reads, locus_data.read_methylation, ALT))
             locus_data.gt_arange        = (locus_data.gt_arange[0], f'{lower}-{upper}')
+            if cooper.args.decompose and ALT != 'DEL':
+                decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
+                locus_data.gt_decomp_seqs   = (locus_data.gt_decomp_seqs[0], decomp_seq)
 
     write_heterozygous_call(cooper, locus_key)
 

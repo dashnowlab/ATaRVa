@@ -43,20 +43,24 @@ def analyse_genotype(cooper, locus_key):
     for i, hap_reads in enumerate(locus_data.hap_read_sets):
         hap_reads = sorted(hap_reads)
         hap_lengths = locus_data.hap_alen_sets[i]
-        ALT, allele_length, decomp_seq, is_repetitive = alt_sequence(locus_data.read_aseqs, hap_reads, locus.motif_length)
+        ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
         lower, upper = (round(x) for x in np.percentile(np.array(hap_lengths), [2.5, 97.5]))
         if i == 0:
             locus_data.gt_aseqs        = (ALT, locus_data.gt_aseqs[1])
             locus_data.gt_alens        = (allele_length, locus_data.gt_alens[1])
-            locus_data.gt_decomp_seqs  = (decomp_seq, locus_data.gt_decomp_seqs[1])
             locus_data.hap_meth_data   = (calculate_methylation(hap_reads, locus_data.read_methylation, ALT), locus_data.hap_meth_data[1])
             locus_data.gt_arange       = (f'{lower}-{upper}', locus_data.gt_arange[1])
+            if cooper.args.decompose and ALT != '<DEL>':
+                decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
+                locus_data.gt_decomp_seqs  = (decomp_seq, locus_data.gt_decomp_seqs[1])
         else:
             locus_data.gt_aseqs        = (locus_data.gt_aseqs[0], ALT)
             locus_data.gt_alens        = (locus_data.gt_alens[0], allele_length)
-            locus_data.gt_decomp_seqs  = (locus_data.gt_decomp_seqs[0], decomp_seq)
             locus_data.hap_meth_data   = (locus_data.hap_meth_data[0], calculate_methylation(hap_reads, locus_data.read_methylation, ALT))
             locus_data.gt_arange       = (locus_data.gt_arange[0], f'{lower}-{upper}')
+            if cooper.args.decompose and ALT != '<DEL>':
+                decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
+                locus_data.gt_decomp_seqs  = (locus_data.gt_decomp_seqs[0], decomp_seq)
     write_heterozygous_call(cooper, locus_key)
 
     return

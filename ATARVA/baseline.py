@@ -450,6 +450,7 @@ class Cooper:
 
         locus_data    = self.cooper_loci_data[locus_key]
         read_seqs     = locus_data.read_aseqs
+
         # --- category 1 — homozygous ---
         if locus_data.hap_category == 1:
             read_seqs = [read_seqs[rid][0] for rid in locus_data.reads]
@@ -469,23 +470,26 @@ class Cooper:
             elif max_allele == self.ref.fetch(locus.chrom, locus.start, locus.end):
                 # homozygous reference genotype
                 ALT = '.'
-                decomp_seq, nonrep_fraction = motif_decomposition(max_allele, locus.motif_length)
                 ref_allele = self.ref.fetch(locus.chrom, locus.start, locus.end)
                 meth_data  = calculate_methylation(locus_data.reads, locus_data.read_methylation, ref_allele)
                 locus_data.gt_alens  = (locus.length, locus.length)
                 locus_data.gt_arange = f'{locus.length}-{locus.length},{locus.length}-{locus.length}'
                 locus_data.gt_aseqs  = (max_allele, max_allele)
                 locus_data.hap_meth_data  = (meth_data, meth_data)
-                locus_data.gt_decomp_seqs = (decomp_seq, decomp_seq)
+                if self.args.decompose:
+                    decomp_seq, nonrep_fraction = motif_decomposition(max_allele, locus.motif_length)
+                    locus_data.gt_decomp_seqs = (decomp_seq, decomp_seq)
 
             else:
-                ALT, allele_length, decomp_seq, is_repetitive = alt_sequence(locus_data.read_aseqs, locus_data.reads, locus.motif_length)
+                ALT, allele_length = alt_sequence(locus_data.read_aseqs, locus_data.reads)
                 meth_data = calculate_methylation(locus_data.reads, locus_data.read_methylation, ALT)
                 locus_data.gt_alens       = (len(ALT), len(ALT))
                 locus_data.gt_arange      = f'{len(ALT)}-{len(ALT)}'
                 locus_data.gt_aseqs       = (ALT, ALT)
                 locus_data.hap_meth_data  = (meth_data, meth_data)
-                locus_data.gt_decomp_seqs = (decomp_seq, decomp_seq)
+                if self.args.decompose:
+                    decomp_seq, nonrep_fraction = motif_decomposition(max_allele, locus.motif_length)
+                    locus_data.gt_decomp_seqs = (decomp_seq, decomp_seq)
 
             write_homozygous_call(self, locus_key)
             locus_data.is_genotyped = 1
@@ -512,9 +516,8 @@ class Cooper:
                 alen_lists.append(alen_list)
                 lower, upper = (round(x) for x in np.percentile(np.array(alen_list), [2.5, 97.5]))
 
-                decomp_seq = None
                 if seqs:
-                    ALT, allele_length, decomp_seq, is_repetitive = alt_sequence(locus_data.read_aseqs, hap_reads, locus.motif_length)
+                    ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
                     allele_length = len(ALT)
                 else:
                     ALT           = '<DEL>'
@@ -530,14 +533,16 @@ class Cooper:
                     locus_data.gt_alens        = (allele_length, locus_data.gt_alens[1])
                     locus_data.gt_arange       = (f'{lower}-{upper}', locus_data.gt_arange[1])
                     locus_data.hap_meth_data   = (meth_data, locus_data.hap_meth_data[1])
-                    if decomp_seq is not None:
+                    if self.args.decompose and ALT != '<DEL>':
+                        decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
                         locus_data.gt_decomp_seqs  = (decomp_seq, locus_data.gt_decomp_seqs[1])
                 else:
                     locus_data.gt_aseqs        = (locus_data.gt_aseqs[0], ALT)
                     locus_data.gt_alens        = (locus_data.gt_alens[0], allele_length)
                     locus_data.gt_arange       = (locus_data.gt_arange[0], f'{lower}-{upper}')
                     locus_data.hap_meth_data   = (locus_data.hap_meth_data[0], meth_data)
-                    if decomp_seq is not None:
+                    if self.args.decompose and ALT != '<DEL>':
+                        decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
                         locus_data.gt_decomp_seqs  = (locus_data.gt_decomp_seqs[0], decomp_seq)
 
             (l1, u1) = np.percentile(alen_lists[0], [2.5, 97.5])

@@ -228,7 +228,7 @@ def calculate_methylation(read_indices, read_methylation, consensus_seq):
         return [None, None, None]
 
 
-def alt_sequence(read_alleles, hap_reads, motif_size):
+def alt_sequence(read_alleles, hap_reads):
     """
     generates alt sequence and reports characteristics
 
@@ -253,9 +253,4 @@ def alt_sequence(read_alleles, hap_reads, motif_size):
         ALT = '<DEL>'
         allele_length = 0
 
-    decomposed_seq = ''
-    is_repetitive = True
-    if allele_length and (motif_size <= 10):
-        decomposed_seq, nonrep_fraction = motif_decomposition(ALT, motif_size)
-        if nonrep_fraction > 0.30: is_repetitive = False
-    return [ALT, allele_length, decomposed_seq, is_repetitive]
+    return [ALT, allele_length]

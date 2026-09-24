@@ -119,9 +119,15 @@ def parse_cstag(cooper, read):
     for idx, locus_key in enumerate(read.loci_keys):
         # changing all the query coordinates to be relative to the start of the flank start
         flank_query_start = flank_query_range[idx][0]
-        if idx == 0: read.methyl_start = flank_query_start
-
         flank_query_end = flank_query_range[idx][1]
+
+        if min(locus_query_range[idx]) < 0 and  min(flank_query_range[idx]) < 0: continue
+        if locus_query_range[idx][0] == 0 and  locus_query_range[idx][1] == 0: continue
+        elif locus_query_range[idx][0] > 0 and locus_query_range[idx][1] < locus_query_range[idx][0]: continue
+        if locus_query_range[idx][0] - flank_query_range[idx][0] < 5 or flank_query_range[idx][1] - locus_query_range[idx][1] < 5:
+            continue
+
+        if idx == 0: read.methyl_start = flank_query_start
         if idx == num_read_loci - 1: read.methyl_end = flank_query_end
 
         locus_query_range[idx][0] = locus_query_range[idx][0] - flank_query_start

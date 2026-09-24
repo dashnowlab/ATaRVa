@@ -76,34 +76,35 @@ def haplocluster_reads(cooper, locus_key):
         sig_snp_data[pos] = { 'cov': snp_data['cov'], 'alleles': snp_data['alleles'], 'qual': snp_data['qual'] }
 
     min_snp_pos      = qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
-    # for tier_idx, (lower_thresh, upper_thresh) in enumerate(THRESHOLD_RANGES):
+    if not locus_data.is_genotyped:
+        for tier_idx, (lower_thresh, upper_thresh) in enumerate(THRESHOLD_RANGES):
 
-    #     sig_snp_data    = {}
-    #     ordered_sig_snps = []
+            sig_snp_data    = {}
+            ordered_sig_snps = []
 
-    #     for pos in ordered_snp_on_cov:
-    #         snp_data  = relevant_snp_data[pos]
-    #         pos_cov   = snp_data['cov']
-    #         if pos_cov < 0.6 * locus_cov: break
+            for pos in ordered_snp_on_cov:
+                snp_data  = relevant_snp_data[pos]
+                pos_cov   = snp_data['cov']
+                if pos_cov < 0.6 * locus_cov: break
 
-    #         # count alleles where read fraction is within threshold bounds
-    #         balanced_alleles = sum(
-    #             lower_thresh * pos_cov <= len(reads) <= upper_thresh * pos_cov
-    #             for reads in snp_data['alleles'].values()
-    #         )
+                # count alleles where read fraction is within threshold bounds
+                balanced_alleles = sum(
+                    lower_thresh * pos_cov <= len(reads) <= upper_thresh * pos_cov
+                    for reads in snp_data['alleles'].values()
+                )
 
-    #         if balanced_alleles >= 2:
-    #             ordered_sig_snps.append(pos)
-    #             sig_snp_data[pos] = { 'cov': snp_data['cov'], 'alleles': snp_data['alleles'], 'qual': snp_data['qual'] }
+                if balanced_alleles >= 2:
+                    ordered_sig_snps.append(pos)
+                    sig_snp_data[pos] = { 'cov': snp_data['cov'], 'alleles': snp_data['alleles'], 'qual': snp_data['qual'] }
 
-    #     if not ordered_sig_snps:
-    #         if tier_idx < 2: continue
-    #         return -1
+            if not ordered_sig_snps:
+                if tier_idx < 2: continue
+                return -1
 
-    #     min_snp_pos = merge_snpreadsets(cooper, locus_data, sig_snp_data, ordered_sig_snps)
+            min_snp_pos = merge_snpreadsets(cooper, locus_data, sig_snp_data, ordered_sig_snps)
 
-    #     if locus_data.is_genotyped or tier_idx == 2:
-    #         break
+            if locus_data.is_genotyped or tier_idx == 2:
+                break
 
     return min_snp_pos
 
@@ -140,7 +141,7 @@ def merge_snpreadsets(cooper, locus_data, sig_snp_data, ordered_sig_snps):
     snps     = ordered_sig_snps[:cooper.args.snp_count]
 
     # --- compute quality values for top SNPs ---
-    snp_quals = [max(list(sig_snp_data[pos]['qual'].values())) for pos in snps]
+    snp_quals = [max(list([max(list(x.values())) for x in sig_snp_data[pos]['qual'].values()])) for pos in ordered_sig_snps]
     snp_quals = ','.join(str(int(q)) for q in snp_quals)
 
     # --- compute pairwise mismatch scores between SNPs ---
