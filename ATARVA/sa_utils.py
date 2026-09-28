@@ -1,0 +1,334 @@
+from ATARVA.process_softclips import align_sequences, generate_md_tag, generate_cs_tag
+from ATARVA.process_softclips import _cigar_tuples, _cigar_string, join_cigars, _collapse_mismatches
+
+import re
+
+def flip_cigar(cigar: str) -> str:
+    """
+    Flip a CIGAR string so that the roles of target and query are swapped
+    (i.e. convert a target-referenced CIGAR into a query-referenced one,
+    or vice versa).
+
+    In CIGAR notation:
+      - 'D' (deletion) = target has a base, query doesn't  -> becomes 'I'
+      - 'I' (insertion) = query has a base, target doesn't -> becomes 'D'
+      - 'M', '=', 'X', 'S', 'H', 'N', 'P' consume both / are symmetric
+        and stay the same.
+
+    Example:
+        >>> flip_cigar("5M2D3M1I4M")
+        '5M2I3M1D4M'
+    """
+    swap = {'D': 'I', 'I': 'D'}
+
+    ops = re.findall(r'(\d+)([MIDNSHP=X])', cigar)
+    if not ops:
+        raise ValueError(f"Invalid CIGAR string: {cigar!r}")
+
+    flipped = ''.join(f"{length}{swap.get(op, op)}" for length, op in ops)
+    return flipped
+
+def _query_length(cigartuples: list[tuple[int, int]]):
+    query_length = 0
+    for op, length in cigartuples:
+        if op in (0, 1, 4, 5, 7, 8): # M/I/S/=/X consume query
+            query_length += length
+    return query_length
+
+
+def _trim_upcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
+    """
+    Trim the CIGAR from upstream to exclude repeat coords.
+    
+    :param cigar_tuples: list of tuples representing the CIGAR string
+    :param qpos: query position
+    :param rpos: reference position
+    :param repflank_start: start position of the repeat flank
+    """
+
+    for idx, (op, length) in enumerate(cigar_tuples):
+        if op == 4 or op == 5: qpos += length # soft clip
+        if op == 1: qpos += length # insertion
+        if op == 2: # deletion
+            for _ in range(length):
+                rpos += 1
+                if rpos >= repflank_end:
+                    trimmed_cigar = [(2, length - (_ + 1))] + cigar_tuples[idx+1:]
+                    return rpos, qpos, trimmed_cigar
+
+        if op == 0:
+            for _ in range(length):
+                rpos += 1
+                qpos += 1
+                if rpos >= repflank_end:
+                    trimmed_cigar = [(0, length - (_ + 1))] + cigar_tuples[idx+1:]
+                    return rpos, qpos, trimmed_cigar
+
+
+def _trim_downcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
+    """
+    Trim the CIGAR from downstream to exclude repeat coords.
+    
+    :param cigar_tuples: list of tuples representing the CIGAR string
+    :param qpos: query position
+    :param rpos: reference position
+    :param repflank_end: end position of the repeat flank
+    """
+
+    for idx, (op, length) in enumerate(cigar_tuples[::-1]):
+        if op == 4 or op == 5: qpos -= length # soft clip
+        if op == 1: qpos -= length # insertion
+        if op == 2: # deletion
+            for _ in range(length):
+                rpos -= 1
+                if rpos <= repflank_start:
+                    trimmed_cigar = cigar_tuples[:len(cigar_tuples) - (idx + 1)] + [(2, length - (_ + 1))]
+                    return rpos, qpos, trimmed_cigar
+
+        if op == 0:
+            for _ in range(length):
+                rpos -= 1
+                qpos -= 1
+                if rpos <= repflank_start:
+                    trimmed_cigar = cigar_tuples[:len(cigar_tuples) - (idx + 1)] + [(0, length - (_ + 1))]
+                    return rpos, qpos, trimmed_cigar
+
+
+def _conf_downpos(cigar_tuples, rpos, qpos, length_threshold=30):
+
+    for idx, (op, length) in enumerate(cigar_tuples[::-1]):
+        if op == 4 or op == 5: qpos -= length # soft clip
+        if op == 1: qpos -= length # insertion
+        if op == 2: rpos -= length # deletion
+
+        if op == 0:
+            if length >= length_threshold:  # match
+                trimmed_cigar = cigar_tuples[:len(cigar_tuples) - idx] + [(0, length - length_threshold)]
+                return rpos - length_threshold, qpos -  length_threshold, trimmed_cigar
+            rpos -= length
+            qpos -= length
+
+    best_match_score = 0
+    best_match_rpos  = -1
+    best_match_qpos  = -1
+    best_match_cigar = None
+    aln_length = 0
+    aln_score  = 0
+    prev_op = None
+
+    for idx, op, length in enumerate(cigar_tuples[::-1]):
+
+        if op == 4 or op == 5: qpos -= length # soft clip
+
+        if op == 1: # insertion
+            for _ in range(length):
+                qpos -= 1
+                if aln_length < length_threshold:
+                    aln_length += 1
+                    aln_score  -= 1
+                    prev_op = 1
+                else:
+                    if prev_op == 0: aln_score -= 1
+                    else: aln_score += 1
+                    aln_score -= 1
+                    prev_op = 1
+                    if aln_score > best_match_score:
+                        best_match_score = aln_score
+                        best_match_rpos = rpos
+                        best_match_qpos = qpos
+                        best_match_cigar = cigar_tuples[:len(cigar_tuples) - (idx + 1)] + [(1, length - (_ + 1))]
+
+        if op == 2: # deletion
+            for _ in range(length):
+                rpos -= 1
+                if aln_length < length_threshold:
+                    aln_length += 1
+                    aln_score  -= 1
+                    prev_op = 2
+                else:
+                    if prev_op == 0: aln_score -= 1
+                    else: aln_score += 1
+                    aln_score -= 1
+                    prev_op = 2
+                    if aln_score > best_match_score:
+                        best_match_score = aln_score
+                        best_match_rpos = rpos
+                        best_match_qpos = qpos
+                        best_match_cigar = cigar_tuples[:len(cigar_tuples) - (idx + 1)] + [(2, length - (_ + 1))]
+
+        if op == 0: # match
+            for _ in range(length):
+                rpos -= 1
+                qpos -= 1
+                if aln_length < length_threshold:
+                    aln_length += 1
+                    aln_score  += 1
+                    prev_op = 0
+                else:
+                    if prev_op == 0: aln_score -= 1
+                    else: aln_score -= 1
+                    aln_score += 1
+                    prev_op = 0
+                    if aln_score > best_match_score:
+                        best_match_score = aln_score
+                        best_match_rpos = rpos
+                        best_match_qpos = qpos
+                        best_match_cigar = cigar_tuples[:len(cigar_tuples) - (idx + 1)] + [(0, length - (_ + 1))]
+
+    return best_match_rpos, best_match_qpos, best_match_cigar
+
+
+def _conf_uppos(cigar_tuples, rpos, qpos, length_threshold=30):
+    
+    for idx, (op, length) in enumerate(cigar_tuples):
+        if op == 4 or op == 5: qpos += length # soft clip
+        if op == 1: qpos += length # insertion
+        if op == 2: rpos += length # deletion
+
+        if op == 0:
+            if length >= length_threshold:  # match
+                trimmed_cigar = [(0, length - length_threshold)] + cigar_tuples[idx+1:]
+                return rpos + length_threshold, qpos + length_threshold, trimmed_cigar
+            rpos += length
+            qpos += length
+
+    best_match_score = 0
+    best_match_rpos  = -1
+    best_match_qpos  = -1
+    best_match_cigar = None
+    aln_length = 0
+    aln_score  = 0
+    prev_op = None
+
+    for idx, op, length in enumerate(cigar_tuples):
+
+        if op == 4 or op == 5: qpos += length # soft clip
+
+        if op == 1: # insertion
+            for _ in range(length):
+                qpos += 1
+                if aln_length < length_threshold:
+                    aln_length += 1
+                    aln_score  -= 1
+                    prev_op = 1
+                else:
+                    if prev_op == 0: aln_score -= 1
+                    else: aln_score += 1
+                    aln_score -= 1
+                    prev_op = 1
+                    if aln_score > best_match_score:
+                        best_match_score = aln_score
+                        best_match_rpos = rpos
+                        best_match_qpos = qpos
+                        best_match_cigar = [(1, length - (_ + 1))] + cigar_tuples[idx + 1:]
+
+        if op == 2: # deletion
+            for _ in range(length):
+                rpos += 1
+                if aln_length < length_threshold:
+                    aln_length += 1
+                    aln_score  -= 1
+                    prev_op = 2
+                else:
+                    if prev_op == 0: aln_score -= 1
+                    else: aln_score += 1
+                    aln_score -= 1
+                    prev_op = 2
+                    if aln_score > best_match_score:
+                        best_match_score = aln_score
+                        best_match_rpos = rpos
+                        best_match_qpos = qpos
+                        best_match_cigar = [(2, length - (_ + 1))] + cigar_tuples[idx + 1:]
+
+        if op == 0: # match
+            for _ in range(length):
+                rpos += 1
+                qpos += 1
+                if aln_length < length_threshold:
+                    aln_length += 1
+                    aln_score  += 1
+                    prev_op = 0
+                else:
+                    if prev_op == 0: aln_score -= 1
+                    else: aln_score -= 1
+                    aln_score += 1
+                    prev_op = 0
+                    if aln_score > best_match_score:
+                        best_match_score = aln_score
+                        best_match_rpos = rpos
+                        best_match_qpos = qpos
+                        best_match_cigar = [(0, length - (_ + 1))] + cigar_tuples[idx + 1:]
+
+    return best_match_rpos, best_match_qpos, best_match_cigar
+
+
+def process_upstreamsa(cooper, ref, read, sa_read, sa_start, sa_end, sa_cigar, reapeat_flank_start, repeat_flank_end):
+    """
+    Process the supplementary alignments of a read to check if any of them cover the locus of interest.
+    """
+
+    # print(sa_read.cigartuples)
+    assert _query_length(read.cigartuples) == _query_length(sa_read.cigartuples)
+    query_len = _query_length(read.cigartuples)
+    query_seq = ""
+    primary = "READ"
+    if len(sa_read.query_sequence) == query_len:
+        query_seq = sa_read.query_sequence
+        primary = "SA"
+    elif len(read.query_sequence) == query_len:
+        query_seq = read.query_sequence
+        primary = "READ"
+
+    if query_seq == "":
+        print(f"Query length mismatch between primary and supplementary alignment for read {read.query_name}.")
+        return
+    
+    flank = 0
+    pa_rpos, pa_qpos, pa_trimmed_cigar = _trim_upcigar(read.cigartuples, 0, read.ref_start, reapeat_flank_start-flank, repeat_flank_end+flank)
+    sa_rpos, sa_qpos, sa_trimmed_cigar = _trim_downcigar(sa_cigar, _query_length(sa_cigar), sa_end, reapeat_flank_start-flank, repeat_flank_end+flank)
+    print(f"PA ref position: {pa_rpos}, PA query position: {pa_qpos}")
+    # print(f"Trimmed primary alignment CIGAR: {pa_trimmed_cigar}")
+    print(f"SA ref position: {sa_rpos}, SA query position: {sa_qpos}")
+    # print(f"Trimmed supplementary alignment CIGAR: {sa_trimmed_cigar}")
+
+    sa_conf_rpos, sa_conf_qpos, sa_conf_cigar = sa_rpos, sa_qpos, sa_trimmed_cigar
+    pa_conf_rpos, pa_conf_qpos, pa_conf_cigar = pa_rpos, pa_qpos, pa_trimmed_cigar
+    # sa_conf_rpos, sa_conf_qpos, sa_conf_cigar = _conf_downpos(sa_trimmed_cigar, sa_rpos, sa_qpos)
+    # print(f"Confident SA ref position: {sa_conf_rpos}, Confident SA query position: {sa_conf_qpos}")
+    # print(f"Confident SA CIGAR: {sa_conf_cigar}")
+    # pa_conf_rpos, pa_conf_qpos, pa_conf_cigar = _conf_uppos(pa_trimmed_cigar, pa_rpos, pa_qpos)
+    # print(f"Confident PA ref position: {pa_conf_rpos}, Confident PA query position: {pa_conf_qpos}")
+    # print(f"Confident PA CIGAR: {pa_conf_cigar}")
+
+    sa_target = ref.fetch(cooper.chrom, sa_conf_rpos, pa_conf_rpos)
+    sa_query  = query_seq[sa_conf_qpos:pa_conf_qpos]
+
+    # sa_cigarstring, score = align_sequences(sa_target, sa_query)
+    sa_cigarstring, score = align_sequences(sa_query, sa_target) # faster if the the query is shorter
+    # sa_cigarstring = flip_cigar(sa_cigarstring)
+
+    if primary == "READ":
+        joined_cigar = f'{sa_conf_qpos}S' + join_cigars(sa_cigarstring, _cigar_string(pa_conf_cigar))
+    else:
+        joined_cigar = f'{sa_conf_qpos}S' + join_cigars(sa_cigarstring, _cigar_string(pa_conf_cigar))
+        read.query_sequence = query_seq
+        read.query_qualities = sa_read.query_qualities
+        read.mod_bases       = sa_read.modified_bases
+    if '=' not in read.cigarstring:
+        joined_cigar = joined_cigar.replace('=', 'M').replace('X', 'M')
+    if 'X' not in read.cigarstring:
+        joined_cigar = joined_cigar.replace('=', 'M').replace('X', 'M')
+        match_char = 'M' if '=' not in read.cigarstring else '='
+        joined_cigar = _collapse_mismatches(joined_cigar, match_char)
+    print(f"Joined CIGAR: {joined_cigar}")
+    read.cigarstring = joined_cigar
+    read.cigartuples = _cigar_tuples(joined_cigar)
+    read.ref_start   = sa_conf_rpos
+    read.query_start = sa_conf_qpos
+    # if read.has_tag('MD'):
+    #     sa_mdtag = generate_md_tag(sa_cigarstring, sa_target, sa_query)
+    # if read.has_tag('cs'):
+    #     cs_tag = generate_cs_tag(sa_query, sa_target, sa_cigarstring)
+    return
+
+    

@@ -19,7 +19,7 @@ from ATARVA.consensus         import consensus_seq_poa
 from ATARVA.genotype_utils    import analyse_genotype
 from ATARVA.process_softclips import process_flank_stretches, check_flank
 from ATARVA.flank_utils       import check_flank_order, process_flanks
-
+from ATARVA.sa_utils          import process_upstreamsa
 
 SKIP_MESSAGES = {
     0: 'Locus failed - insufficient reads support',
@@ -100,6 +100,7 @@ class Cooper:
         self.haploid    = False
         self.somatic    = False
         self.logger     = None
+        self.supp_reads = {}
 
         self.outhandle = open(self.outfile, 'w')
 
@@ -252,7 +253,11 @@ class Cooper:
                     break
 
                 # process the SA tag to store relevant supplementary alignments
-                # if read.has_tag('SA'): read.process_satag()
+                if read.has_tag('SA'):
+                    if read.query_name not in self.supp_reads:
+                        self.supp_reads[read.query_name] = [read]
+                    else:
+                        self.supp_reads[read.query_name].append(read)
 
                 # --- assign loci to read ---
                 softclip_loci  = {'keys': [], 'loci': [], 'coords': [], 'flags': []}
@@ -277,8 +282,19 @@ class Cooper:
 
                     # check if the locus is outside the read's reference boundaries check if it's in the softclipped region
                     softclip_result = None
-                    if softclip_mode and (locus_start < read.ref_start or locus_end > read.ref_end):
+                    if locus_start - self.args.flank < read.ref_start:
+                        if read.query_name in self.supp_reads:
+                            for sa_read in self.supp_reads[read.query_name][:-1]:
+                                sa_start, sa_end = sa_read.reference_start, sa_read.reference_end
+                                if sa_start <= locus_start - self.args.flank:
+                                    print(f"\n\nRead {read.query_name} has a supplementary alignment at the start {sa_start}-{sa_end} that covers the locus {chrom}:{locus_start}-{locus_end}.")
+                                    print(read.cigarstring)
+                                    print(sa_read.cigarstring)
+                                    process_upstreamsa(self, self.ref, read, sa_read, sa_start, sa_end, sa_read.cigartuples, locus_start - self.args.flank, locus_end + self.args.flank)
+
+                    if softclip_mode and (locus_start - self.args.flank < read.ref_start or locus_end + self.args.flank > read.ref_end):
                         softclip_result = check_flank(self, read, locus_start, locus_end, start_softclip, end_softclip)
+                        print(read.query_name, softclip_result)
                     # result structure {'upstream':   (ref_flank_start, ref_flank_end, query_flank_start, query_flank_end),
                     #                   'downstream': (ref_flank_start, ref_flank_end, query_flank_start, query_flank_end)}
                     if softclip_result is not None:
@@ -293,7 +309,9 @@ class Cooper:
                             softclip_loci['loci'].append((chrom, locus_start, locus_end))
                             softclip_loci['coords'].append(softclip_result)
                             softclip_loci['flags'].append('FLANK_ORDER_INVALID')
-                    if not (read.ref_start <= locus_start and locus_end <= read.ref_end) and softclip_result is not None:
+                    if read.query_name == "m21007_240927_225820/40700863/ccs":
+                        print(softclip_loci)
+                    if not (read.ref_start <= locus_start - self.args.flank and locus_end <= read.ref_end + self.args.flank) and softclip_result is not None:
                         continue
 
                     left_flank  = min(self.args.flank, clamp_zero(locus_start - read.ref_start))
@@ -323,6 +341,14 @@ class Cooper:
                         merged_coords = process_flanks(softclip_loci, read.ref_start, read.ref_end)
                     if len(merged_coords) > 0:
                         process_flank_stretches(self, read, merged_coords)
+                        for i, locus_key in enumerate(read.loci_keys):
+                            locus_start, locus_end = map(int, locus_key.split(':')[1].split('-'))
+                            left_flank  = min(self.args.flank, locus_start - read.ref_start) 
+                            right_flank = min(self.args.flank, read.ref_end  - locus_end)
+
+                            read.left_flanks[i]  = left_flank
+                            read.right_flanks[i] = right_flank
+                            read.loci_coords[i]  = (locus_start - left_flank, locus_end + right_flank)
 
                 read_required = True
                 for key in read.loci_keys:
@@ -362,6 +388,7 @@ class Cooper:
 
                 # --- methylation extraction ---
                 mod_bases = ()
+                mod_bases = (list(read.mod_bases.items()) if read.mod_bases is not None else [])
 
                 if read.has_tag('cs'):
                     parse_cstag(self, read)
@@ -385,6 +412,7 @@ class Cooper:
                             ldata.read_alens[read.index]     = [locus_read_info.halen, locus_read_info.alen]
                             ldata.read_aseqs[read.index]     = locus_read_info.seq
                             ldata.read_haplotags[read.index] = read.haplotag[1]
+                            ldata.read_names[read.index]     = read.query_name
                             if self.args.haplotag and read.has_tag(self.args.haplotag):
                                 if read.haplotag[2] is not None: ldata.read_haplotag_ps[read.index] = read.haplotag[2]
                             # remove lowest quality read
@@ -407,6 +435,7 @@ class Cooper:
                         ldata.read_alens[read.index]     = [locus_read_info.halen, locus_read_info.alen]
                         ldata.read_aseqs[read.index]     = locus_read_info.seq
                         ldata.read_haplotags[read.index] = read.haplotag[1]
+                        ldata.read_names[read.index]     = read.query_name
                         if self.args.haplotag and read.has_tag(self.args.haplotag):
                             if read.haplotag[2] is not None: ldata.read_haplotag_ps[read.index] = read.haplotag[2]
                         if ldata.min_read_qual > read.mean_qual:

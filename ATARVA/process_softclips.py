@@ -522,6 +522,14 @@ def _cigar_tuples(cigar: str):
     return cigar_tuples
 
 
+def _cigar_string(cigartuples: list[tuple[int, int]]):
+    cigar_map = {0: 'M', 1: 'I', 2: 'D', 3: 'N', 4: 'S', 5: 'H', 6: 'P', 7: '=', 8: 'X', 9: 'B'}
+    cigar_string = ''
+    for op, length in cigartuples:
+        cigar_string += f'{length}{cigar_map[op]}'
+    return cigar_string
+
+
 def _query_length(cigartuples: list[tuple[int, int]]):
     query_length = 0
     for op, length in cigartuples:
@@ -753,8 +761,8 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
     """
 
     NONREP_FLANK = 30
-    score_threshold = int(2 * (0.9 * NONREP_FLANK))  # a match score of 90% as threshold
-    low_score_threshold = int(2 * (0.8 * NONREP_FLANK))  # a match score of 90% as threshold
+    score_threshold = int(2 * (0.8 * NONREP_FLANK))  # a match score of 90% as threshold
+    low_score_threshold = int(2 * (0.7 * NONREP_FLANK))  # a match score of 90% as threshold
 
     # contains reference and read coordinates of upstream and downstream flanks of a locus; initialized to None
     result = {'upstream': None, 'downstream': None}  

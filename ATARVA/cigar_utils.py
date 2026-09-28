@@ -1,7 +1,7 @@
 import bisect
 import numpy as np
 
-from ATARVA.operation_utils import match_jump, deletion_jump, insertion_jump
+from ATARVA.operation_utils import match_jump, deletion_jump, N_jump, insertion_jump, B_jump
 from ATARVA.md_utils import parse_mdtag
 from ATARVA.structures import SNP
 
@@ -67,6 +67,7 @@ def parse_cigar(cooper, read):
     has_MD = read.has_tag('MD')
 
     insert_positions = {}
+    N_skip_loci      = set()
 
     haploid              = cooper.haploid
     snp_data             = cooper.cooper_snp_data
@@ -98,6 +99,16 @@ def parse_cigar(cooper, read):
             repeat_index += deletion_jump(read, rpos, qpos, deletion_len, repeat_index, locus_query_range,
                                           flank_query_range, locus_reached, locus_boundary_crossed, left_flank_deletions, right_flank_deletions)
 
+        elif cigar[0] == 3:     # intron
+            deletion_len = cigar[1]
+            if not haploid:
+                cooper_read_data[read_index].dels.extend([rpos, rpos + deletion_len])
+                if not cooper.args.rna:
+                    cooper_read_data[read_index].no_snps.update(range(rpos-no_snp_range, rpos + deletion_len + 1 + no_snp_range))
+            rpos += deletion_len
+            repeat_index += N_jump(read, rpos, qpos, deletion_len, repeat_index, locus_query_range,
+                                   flank_query_range, locus_reached, locus_boundary_crossed, N_skip_loci)
+
         elif cigar[0] == 1:     # insertion
             insert_positions[rpos] = cigar[1]
             cooper_read_data[read_index].no_snps.update(range(rpos-no_snp_range, rpos + 1 + no_snp_range))
@@ -107,6 +118,16 @@ def parse_cigar(cooper, read):
 
             qpos += insert_len
             repeat_index += insertion_jump(read, rpos, qpos, insert_len, homopolymer_insert, repeat_index, locus_query_range, flank_query_range,
+                                           locus_reached, locus_boundary_crossed, left_flank_insertions, right_flank_insertions)
+
+        elif cigar[0] == 9:     # B
+            insert_positions[rpos] = cigar[1]
+            cooper_read_data[read_index].no_snps.update(range(rpos-no_snp_range, rpos + 1 + no_snp_range))
+            insert_len = cigar[1]
+            homopolymer_insert = False
+
+            qpos += insert_len
+            repeat_index += B_jump(read, rpos, qpos, insert_len, homopolymer_insert, repeat_index, locus_query_range, flank_query_range,
                                            locus_reached, locus_boundary_crossed, left_flank_insertions, right_flank_insertions)
         
         elif cigar[0] == 0: # match (includes substitutions)
@@ -183,7 +204,6 @@ def parse_cigar(cooper, read):
         flank_query_start = flank_query_range[idx][0]
         flank_query_end = flank_query_range[idx][1]
 
-
         if min(locus_query_range[idx]) < 0 and  min(flank_query_range[idx]) < 0: continue
         if locus_query_range[idx][0] == 0 and  locus_query_range[idx][1] == 0: continue
         elif locus_query_range[idx][0] > 0 and locus_query_range[idx][1] < locus_query_range[idx][0]: continue
@@ -207,3 +227,6 @@ def parse_cigar(cooper, read):
                                          left_flank_deletions[idx],
                                          right_flank_deletions[idx],
                                          flank_query_start, flank_query_end]
+
+    for locus_key in N_skip_loci:
+        del read.loci_data[locus_key]

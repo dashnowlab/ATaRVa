@@ -91,7 +91,7 @@ class ReadInfo:
 @dataclass(slots=True)
 class LocusVariation:
     reads:             list  = field(default_factory=list)  # list of all informative read indices for the locus
-    read_names:        list  = field(default_factory=list)  # list of all informative read names for the locus
+    read_names:        dict  = field(default_factory=dict)  # list of all informative read names for the locus
     read_haplotags:    dict  = field(default_factory=dict)  # the haplotag assigned to each read in reads
     read_haplotag_ps:  dict  = field(default_factory=dict)  # the phase set assigned to each read in reads
     depth:             int   = 0                            # depth of the locus, updated when reads are subset for high coverage loci  
@@ -169,6 +169,10 @@ class ExtendedRead(pysam.AlignedSegment):
             ext.cs_tag            = read.get_tag('cs')
         if read.has_tag('MD'):
             ext.md_tag            = read.get_tag('MD')
+        if read.modified_bases:
+            ext.mod_bases         = read.modified_bases
+        else:
+            ext.mod_bases         = None
 
         # custom attributes
         ext.index                  = None
