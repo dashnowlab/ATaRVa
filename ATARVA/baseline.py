@@ -282,19 +282,15 @@ class Cooper:
 
                     # check if the locus is outside the read's reference boundaries check if it's in the softclipped region
                     softclip_result = None
-                    if locus_start - self.args.flank < read.ref_start:
-                        if read.query_name in self.supp_reads:
-                            for sa_read in self.supp_reads[read.query_name][:-1]:
-                                sa_start, sa_end = sa_read.reference_start, sa_read.reference_end
-                                if sa_start <= locus_start - self.args.flank:
-                                    print(f"\n\nRead {read.query_name} has a supplementary alignment at the start {sa_start}-{sa_end} that covers the locus {chrom}:{locus_start}-{locus_end}.")
-                                    print(read.cigarstring)
-                                    print(sa_read.cigarstring)
-                                    process_upstreamsa(self, self.ref, read, sa_read, sa_start, sa_end, sa_read.cigartuples, locus_start - self.args.flank, locus_end + self.args.flank)
+                    # if locus_start - self.args.flank < read.ref_start:
+                    #     if read.query_name in self.supp_reads:
+                    #         for sa_read in self.supp_reads[read.query_name][:-1]:
+                    #             sa_start, sa_end = sa_read.reference_start, sa_read.reference_end
+                    #             if sa_start <= locus_start - self.args.flank:
+                    #                 process_upstreamsa(self, self.ref, read, sa_read, sa_start, sa_end, sa_read.cigartuples, locus_start - self.args.flank, locus_end + self.args.flank)
 
                     if softclip_mode and (locus_start - self.args.flank < read.ref_start or locus_end + self.args.flank > read.ref_end):
                         softclip_result = check_flank(self, read, locus_start, locus_end, start_softclip, end_softclip)
-                        print(read.query_name, softclip_result)
                     # result structure {'upstream':   (ref_flank_start, ref_flank_end, query_flank_start, query_flank_end),
                     #                   'downstream': (ref_flank_start, ref_flank_end, query_flank_start, query_flank_end)}
                     if softclip_result is not None:
@@ -309,8 +305,6 @@ class Cooper:
                             softclip_loci['loci'].append((chrom, locus_start, locus_end))
                             softclip_loci['coords'].append(softclip_result)
                             softclip_loci['flags'].append('FLANK_ORDER_INVALID')
-                    if read.query_name == "m21007_240927_225820/40700863/ccs":
-                        print(softclip_loci)
                     if not (read.ref_start <= locus_start - self.args.flank and locus_end <= read.ref_end + self.args.flank) and softclip_result is not None:
                         continue
 

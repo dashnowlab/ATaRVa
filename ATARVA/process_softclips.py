@@ -249,6 +249,13 @@ def join_cstags(cs_left: str, cs_right: str) -> str:
 
 
 def right_md_token(md):
+    """
+    Extract the rightmost token from an MD tag.
+
+    :param md: MD tag string
+    :return: tuple (token, index of token end)
+    """
+
     i = 0
     if md[i].isdigit():
         num = ''
@@ -267,6 +274,13 @@ def right_md_token(md):
 
 
 def left_md_token(md):
+    """
+    Extract the leftmost token from an MD tag.
+
+    :param md: MD tag string
+    :return: tuple (token, index of token start)
+    """
+
     i = len(md) - 1
     if md[i].isdigit():
         num = ''
@@ -286,6 +300,14 @@ def left_md_token(md):
 
 
 def join_mdtags(md1, md2):
+    """
+    join two continuous minimap2 MD tags and normalize.
+
+    :param md1: left MD tag fragment (e.g., "10A5^CT")
+    :param md2: right MD tag fragment (e.g., "3G7")
+    :return:    joined MD tag (e.g., "10A8^CTG7")
+    """
+
     if md1 == '': return md2
     if md2 == '': return md1
 
@@ -507,6 +529,13 @@ def _collapse_mismatches(cigar: str, match_char: str):
 
 
 def _cigar_tuples(cigar: str):
+    """
+    Convert CIGAR string to list of (operation, length) tuples.
+
+    :param cigar: CIGAR string (e.g., "10M1I5M2D8M")
+    :return:      list of (operation, length) tuples
+    """
+
     length = ''
     cigar_map = {'M': 0, 'I': 1, 'D': 2, 'N': 3, 'S': 4, 'H': 5, 'P': 6, '=': 7, 'X': 8, 'B': 9}
     cigar_tuples = []
@@ -523,6 +552,13 @@ def _cigar_tuples(cigar: str):
 
 
 def _cigar_string(cigartuples: list[tuple[int, int]]):
+    """
+    Convert CIGAR tuples to CIGAR string.
+
+    :param cigartuples: list of (operation, length) tuples
+    :return:            CIGAR string
+    """
+
     cigar_map = {0: 'M', 1: 'I', 2: 'D', 3: 'N', 4: 'S', 5: 'H', 6: 'P', 7: '=', 8: 'X', 9: 'B'}
     cigar_string = ''
     for op, length in cigartuples:
@@ -531,6 +567,12 @@ def _cigar_string(cigartuples: list[tuple[int, int]]):
 
 
 def _query_length(cigartuples: list[tuple[int, int]]):
+    """
+    Calculate the length of the query sequence consumed by the CIGAR operations.
+
+    :param cigartuples: list of (operation, length) tuples
+    :return:            length of the query sequence
+    """
     query_length = 0
     for op, length in cigartuples:
         if op in (0, 1, 4, 7, 8): # M/I/S/=/X consume query
@@ -539,6 +581,12 @@ def _query_length(cigartuples: list[tuple[int, int]]):
 
 
 def _ref_length(cigartuples: list[tuple[int, int]]):
+    """
+    Calculate the length of the reference sequence consumed by the CIGAR operations.
+
+    :param cigartuples: list of (operation, length) tuples
+    :return:            length of the reference sequence
+    """
     ref_length = 0
     for op, length in cigartuples:
         if op in (0, 2, 3, 7, 8): # M/D/N/=/X consume reference
@@ -580,6 +628,13 @@ def strip_softclip(cigar: str, dir: str) -> tuple[str, int]:
 
 
 def md_stats(md):
+    """
+    Extract match, mismatch, and deletion counts from MD tag.
+
+    :param md: MD tag string
+    :return: tuple (matches, mismatches, deletions)
+    """
+
     matches = 0
     mismatches = 0
     deletions = 0
@@ -605,6 +660,13 @@ def md_stats(md):
 
 
 def cigar_stats(cigar):
+    """
+    Extract match and deletion counts from CIGAR string.
+
+    :param cigar: CIGAR string
+    :return: tuple (matches, deletions)
+    """
+
     match_len = 0
     del_len = 0
 
@@ -626,6 +688,14 @@ def cigar_stats(cigar):
 
 
 def valid_md(md, cigar):
+    """
+    Validate MD tag against CIGAR string by comparing match, mismatch, and deletion counts.
+
+    :param md: MD tag string
+    :param cigar: CIGAR string
+    :return: True if valid, False otherwise
+    """
+
     m, x, d_md = md_stats(md)
     m_cigar, d_cigar = cigar_stats(cigar)
 
@@ -640,6 +710,7 @@ def cs_stats(cs):
     :param cs: CS tag string
     :return: tuple (matches, mismatches)
     """
+
     matches = 0
     mismatches = 0
 
@@ -677,6 +748,7 @@ def valid_cs(cs, cigar):
     :param cigar: CIGAR string
     :return: True if valid, False otherwise
     """
+
     cs_m, cs_x = cs_stats(cs)
     m_cigar, d_cigar = cigar_stats(cigar)
 
@@ -761,8 +833,8 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
     """
 
     NONREP_FLANK = 30
-    score_threshold = int(2 * (0.8 * NONREP_FLANK))  # a match score of 90% as threshold
-    low_score_threshold = int(2 * (0.7 * NONREP_FLANK))  # a match score of 90% as threshold
+    score_threshold = int(2 * (0.9 * NONREP_FLANK))  # a match score of 90% as threshold
+    low_score_threshold = int(2 * (0.8 * NONREP_FLANK))  # a match score of 90% as threshold
 
     # contains reference and read coordinates of upstream and downstream flanks of a locus; initialized to None
     result = {'upstream': None, 'downstream': None}  
@@ -777,6 +849,8 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
         if not kmer_match: return None
 
         alignment_score, _align_score, target_begin, target_end, query_begin, query_end, sCigar = stripSW(Inputs(softclip_seq, upstream), False)
+        print(f"Upstream: {upstream}")
+        print(f"CIGAR:    {sCigar}")
 
         if alignment_score >= score_threshold and target_end > 0 and _align_score < low_score_threshold:
             result['upstream'] = (locus_start - NONREP_FLANK + query_begin,
@@ -790,6 +864,8 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
                 softclip_seq  = read.query_sequence[target_end:up_softclip]
                 downstream = cooper.ref.fetch(read.chrom, locus_end, locus_end + NONREP_FLANK)
                 alignment_score_down, _align_score_down, target_begin_down, target_end_down, query_begin_down, query_end_down, sCigar_down = stripSW(Inputs(softclip_seq, downstream), False)
+                print(f"Downstream: {downstream}")
+                print(f"CIGAR:      {sCigar_down}")
 
                 if alignment_score_down >= score_threshold and _align_score_down < low_score_threshold:
                     result['downstream'] = (locus_end + query_begin_down,
@@ -808,6 +884,8 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
         if not kmer_match: return None
 
         alignment_score, _align_score, target_begin, target_end, query_begin, query_end, sCigar = stripSW(Inputs(softclip_seq, downstream), False)
+        print(f"Downstream: {downstream}")
+        print(f"CIGAR:      {sCigar}")
 
         if alignment_score >= score_threshold and target_begin < len(softclip_seq) and _align_score < low_score_threshold:
             result['downstream'] = (locus_end + query_begin,
@@ -820,6 +898,8 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
                 softclip_seq = read.query_sequence[read.query_end:read.query_end + target_begin]
                 upstream = cooper.ref.fetch(read.chrom, locus_start - NONREP_FLANK, locus_start)
                 alignment_score_up, _align_score_up, target_begin_up, target_end_up, query_begin_up, query_end_up, sCigar_up = stripSW(Inputs(softclip_seq, upstream), False)
+                print(f"Upstream: {upstream}")
+                print(f"CIGAR:    {sCigar_up}")
 
                 if alignment_score_up >= score_threshold and _align_score_up < low_score_threshold:
                     result['upstream'] = (locus_start - NONREP_FLANK + query_begin_up,
