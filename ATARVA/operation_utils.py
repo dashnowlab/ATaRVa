@@ -1,4 +1,3 @@
-from ATARVA.process_softclips import detect_flank
 
 
 def clean_eqsign_readseq(chrom, ref_pos, cigar_tuples, read_seq, ref):
