@@ -70,6 +70,11 @@ def _assign_genotype(cooper, locus_key, locus_data, c1_idx, c2_idx, c1_lengths,
         homozygous_call(cooper, locus_key)
         return
 
+    locus_data.hap_read_sets = (locus_data.reads, [])
+    locus_data.hap_alen_sets = ([locus_data.read_alens[rid][0] for rid in locus_data.read_alens], [])
+    locus_data.is_genotyped = True
+    homozygous_call(cooper, locus_key)
+
     locus_data.skip_code = 6
 
 
@@ -409,11 +414,16 @@ def length_genotyper_hdbscan(cooper, locus_key):
     feature_array = np.column_stack([filtered_alens, dist_normalized])
 
     # ── HDBSCAN clustering with 2D features ─────────────────────────────
+    # clusterer = HDBSCAN(
+    #     min_cluster_size=4,        # smaller than the upper group (15), so it survives
+    #     min_samples=3,              # low, so points aren't easily labelled noise
+    #     cluster_selection_method="eom",   # try "eom" first; "leaf" if it merges/under-splits
+    #     allow_single_cluster=True,
+    # ).fit(feature_array)
+
     clusterer = HDBSCAN(
-        min_cluster_size=4,        # smaller than the upper group (15), so it survives
-        min_samples=3,              # low, so points aren't easily labelled noise
-        cluster_selection_method="eom",   # try "eom" first; "leaf" if it merges/under-splits
-        allow_single_cluster=True,
+        min_cluster_size     = max(MIN_READS, int(MIN_CLUSTER_FRAC * len(filtered_alens))),
+        allow_single_cluster = True
     ).fit(feature_array)
 
     labels     = clusterer.labels_
@@ -453,10 +463,8 @@ def length_genotyper_hdbscan(cooper, locus_key):
         elif len(c2_idx) < min_cluster_size <= len(c1_idx):
             min_cluster_size = compute_cluster_cutoff(c2_lengths, c1_lengths)
 
-    _assign_genotype(cooper, locus_key, locus_data,
-                     c1_idx, c2_idx, c1_lengths, c2_lengths,
-                     hap_read_sets, min_cluster_size)
-
+    _assign_genotype(cooper, locus_key, locus_data, c1_idx, c2_idx, 
+                     c1_lengths, c2_lengths, hap_read_sets, min_cluster_size)
 
 
 def length_genotyper_histogram(cooper, locus_key):

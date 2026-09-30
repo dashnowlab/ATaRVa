@@ -12,9 +12,11 @@ def break_locuskey(locus_key):
     :return: chrom, start and end coordinates
     """
     chrom = locus_key[:locus_key.index(':')]
-    start = int(locus_key[(locus_key.index(':') + 1) : locus_key.index('-')])
-    end   = int(locus_key[(locus_key.index('-') + 1) :])
-    return chrom, start, end
+    locus_key = locus_key[locus_key.index(':') + 1:]
+    start, end, motif = locus_key.split('-')
+    start = int(start)
+    end   = int(end)
+    return chrom, start, end, motif
 
 
 def count_alleles(cooper, locus_key):

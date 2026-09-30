@@ -180,8 +180,7 @@ def merge_snpreadsets(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
             sorted(mismatch_scores[best_pos], key=lambda p: mismatch_scores[best_pos][p])
         )
 
-    if len(sig_snps) < 2:
-        return -1
+    # if len(sig_snps) < 2: return -1
 
     # --- build final ordered SNP dict ---
     final_snp_dict = {
@@ -284,7 +283,7 @@ def qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps):
         if max_alt_cov > 0.7 * locus_data.depth or max_alt_cov < 0.3 * locus_data.depth:
             return -1
 
-    # ordered_sig_snps = ordered_sig_snps[:cooper.args.snp_count]
+    ordered_sig_snps = ordered_sig_snps[:cooper.args.snp_count]
     min_snp_pos  = min(ordered_sig_snps)
     sorted_reads = sorted(locus_data.reads)
 

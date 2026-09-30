@@ -99,12 +99,10 @@ def parse_cigar(cooper, read):
             repeat_index += deletion_jump(read, rpos, qpos, deletion_len, repeat_index, locus_query_range,
                                           flank_query_range, locus_reached, locus_boundary_crossed, left_flank_deletions, right_flank_deletions)
 
-        elif cigar[0] == 3:     # intron
+        elif cigar[0] == 3:     # softclip gaps
             deletion_len = cigar[1]
             if not haploid:
                 cooper_read_data[read_index].dels.extend([rpos, rpos + deletion_len])
-                # if not cooper.args.rna:
-                #     cooper_read_data[read_index].no_snps.update(range(rpos-no_snp_range, rpos + deletion_len + 1 + no_snp_range))
             rpos += deletion_len
             repeat_index += N_jump(read, rpos, qpos, deletion_len, repeat_index, locus_query_range,
                                    flank_query_range, locus_reached, locus_boundary_crossed, N_skip_loci)
@@ -203,12 +201,6 @@ def parse_cigar(cooper, read):
         # changing all the query coordinates to be relative to the start of the flank start
         flank_query_start = flank_query_range[idx][0]
         flank_query_end = flank_query_range[idx][1]
-
-        if min(locus_query_range[idx]) < 0 and  min(flank_query_range[idx]) < 0: continue
-        if locus_query_range[idx][0] == 0 and  locus_query_range[idx][1] == 0: continue
-        elif locus_query_range[idx][0] > 0 and locus_query_range[idx][1] < locus_query_range[idx][0]: continue
-        if locus_query_range[idx][0] - flank_query_range[idx][0] < 5 or flank_query_range[idx][1] - locus_query_range[idx][1] < 5:
-            continue
 
         if idx == 0: read.methyl_start = flank_query_start
         if idx == num_read_loci - 1: read.methyl_end = flank_query_end
