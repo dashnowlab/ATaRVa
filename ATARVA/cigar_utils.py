@@ -103,8 +103,8 @@ def parse_cigar(cooper, read):
             deletion_len = cigar[1]
             if not haploid:
                 cooper_read_data[read_index].dels.extend([rpos, rpos + deletion_len])
-                if not cooper.args.rna:
-                    cooper_read_data[read_index].no_snps.update(range(rpos-no_snp_range, rpos + deletion_len + 1 + no_snp_range))
+                # if not cooper.args.rna:
+                #     cooper_read_data[read_index].no_snps.update(range(rpos-no_snp_range, rpos + deletion_len + 1 + no_snp_range))
             rpos += deletion_len
             repeat_index += N_jump(read, rpos, qpos, deletion_len, repeat_index, locus_query_range,
                                    flank_query_range, locus_reached, locus_boundary_crossed, N_skip_loci)

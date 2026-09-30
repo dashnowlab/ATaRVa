@@ -785,8 +785,6 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
         if not kmer_match: return None
 
         alignment_score, _align_score, target_begin, target_end, query_begin, query_end, sCigar = stripSW(Inputs(softclip_seq, upstream), False)
-        print(f"Upstream: {upstream}")
-        print(f"CIGAR:    {sCigar}")
 
         if alignment_score >= score_threshold and target_end > 0 and _align_score < low_score_threshold:
             result['upstream'] = (locus_start - NONREP_FLANK + query_begin,
@@ -800,8 +798,6 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
                 softclip_seq  = read.query_sequence[target_end:up_softclip]
                 downstream = cooper.ref.fetch(read.chrom, locus_end, locus_end + NONREP_FLANK)
                 alignment_score_down, _align_score_down, target_begin_down, target_end_down, query_begin_down, query_end_down, sCigar_down = stripSW(Inputs(softclip_seq, downstream), False)
-                print(f"Downstream: {downstream}")
-                print(f"CIGAR:      {sCigar_down}")
 
                 if alignment_score_down >= score_threshold and _align_score_down < low_score_threshold:
                     result['downstream'] = (locus_end + query_begin_down,
@@ -820,8 +816,6 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
         if not kmer_match: return None
 
         alignment_score, _align_score, target_begin, target_end, query_begin, query_end, sCigar = stripSW(Inputs(softclip_seq, downstream), False)
-        print(f"Downstream: {downstream}")
-        print(f"CIGAR:      {sCigar}")
 
         if alignment_score >= score_threshold and target_begin < len(softclip_seq) and _align_score < low_score_threshold:
             result['downstream'] = (locus_end + query_begin,
@@ -834,8 +828,6 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
                 softclip_seq = read.query_sequence[read.query_end:read.query_end + target_begin]
                 upstream = cooper.ref.fetch(read.chrom, locus_start - NONREP_FLANK, locus_start)
                 alignment_score_up, _align_score_up, target_begin_up, target_end_up, query_begin_up, query_end_up, sCigar_up = stripSW(Inputs(softclip_seq, upstream), False)
-                print(f"Upstream: {upstream}")
-                print(f"CIGAR:    {sCigar_up}")
 
                 if alignment_score_up >= score_threshold and _align_score_up < low_score_threshold:
                     result['upstream'] = (locus_start - NONREP_FLANK + query_begin_up,

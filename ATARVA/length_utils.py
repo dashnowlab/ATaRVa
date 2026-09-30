@@ -2,15 +2,17 @@ import warnings
 import numpy as np
 import stringzilla as sz
 
-from sklearn.cluster import KMeans
-from threadpoolctl   import threadpool_limits
-from sklearn.mixture import GaussianMixture
-from scipy.signal    import find_peaks
-from hdbscan         import HDBSCAN
+from sklearn.cluster   import KMeans
+from sklearn.mixture   import GaussianMixture
+from sklearn.neighbors import KernelDensity
+from scipy.signal      import peak_widths
+from threadpoolctl     import threadpool_limits
+from scipy.signal      import find_peaks
+from hdbscan           import HDBSCAN
 
 from ATARVA.vcf_writer import *
 from ATARVA.sub_operation_utils import alt_sequence, calculate_methylation
-
+from ATARVA.consensus import consensus_seq_poa
 
 def _assign_genotype(cooper, locus_key, locus_data, c1_idx, c2_idx, c1_lengths,
                      c2_lengths, hap_read_sets, min_cluster_size):
@@ -315,6 +317,51 @@ def length_genotyper_gmm(cooper, locus_key):
                      hap_read_sets, min_cluster_size)
 
 
+def merge_hdbscan_clusters(cooper, locus_key, filtered_alens, filtered_seqs, labels):
+    """
+    Merge HDBSCAN clusters if they are too close in allele length space.
+
+    :param cooper:          cooper object
+    :param locus_key:       key for the locus
+    :param filtered_alens:  list of filtered allele lengths
+    :param filtered_seqs:   list of filtered sequences
+    :param labels:          cluster labels from HDBSCAN
+    """
+
+    locus_data = cooper.cooper_loci_data[locus_key]
+    unique_labels = set(labels) - {-1}  # -1 = noise/outlier
+
+    cluster_seqs = {label: [filtered_seqs[i] for i, l in enumerate(labels) if l == label] for label in unique_labels}
+    consensus_seqs = {} # {label: consensus_seq_poa(seqs) for label, seqs in cluster_seqs.items()}
+    for label, seqs in cluster_seqs.items():
+        if max(len(seq) for seq in seqs)  == 0:
+            consensus_seqs[label] = ''
+        else:
+            consensus_seqs[label] = consensus_seq_poa(seqs)
+
+    # Compute cluster centers
+    cluster_centers = {label: len(consensus) for label, consensus in consensus_seqs.items()}
+    ordered_centers = sorted(cluster_centers.keys(), key=lambda x: cluster_centers[x])
+
+    distant_two_clusters = [ordered_centers[0], ordered_centers[-1]]
+    merged_clusters = [[ordered_centers[0]], [ordered_centers[-1]]]
+    for c in ordered_centers[1:-1]:
+        ed = [sz.edit_distance(consensus_seqs[x], consensus_seqs[c]) for x in distant_two_clusters]
+        if ed[0] < ed[1]:
+            merged_clusters[0].append(c)
+        else:
+            merged_clusters[1].append(c)
+
+    clustered_reads = {}
+    for i, cluster_group in enumerate(merged_clusters):
+        group_reads = []
+        for label in cluster_group:
+            group_reads.extend([i for i, l in enumerate(labels) if l == label])
+        clustered_reads[i] = group_reads
+
+    return clustered_reads
+
+
 def length_genotyper_hdbscan(cooper, locus_key):
     """
     Genotype using HDBSCAN — auto cluster count, outlier aware.
@@ -363,8 +410,10 @@ def length_genotyper_hdbscan(cooper, locus_key):
 
     # ── HDBSCAN clustering with 2D features ─────────────────────────────
     clusterer = HDBSCAN(
-        min_cluster_size     = max(MIN_READS, int(MIN_CLUSTER_FRAC * len(filtered_alens))),
-        allow_single_cluster = True
+        min_cluster_size=4,        # smaller than the upper group (15), so it survives
+        min_samples=3,              # low, so points aren't easily labelled noise
+        cluster_selection_method="eom",   # try "eom" first; "leaf" if it merges/under-splits
+        allow_single_cluster=True,
     ).fit(feature_array)
 
     labels     = clusterer.labels_
@@ -379,6 +428,9 @@ def length_genotyper_hdbscan(cooper, locus_key):
         label: [i for i, l in enumerate(labels) if l == label]
         for label in unique_labels
     }
+
+    # if len(clusters) > 2:
+    #     clusters = merge_hdbscan_clusters(cooper, locus_key, filtered_alens, filtered_seqs, labels)
 
     # ── take two largest clusters ─────────────────────────────────────
     top2      = sorted(clusters, key=lambda l: len(clusters[l]), reverse=True)[:2]

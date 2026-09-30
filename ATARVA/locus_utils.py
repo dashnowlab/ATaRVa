@@ -234,7 +234,7 @@ def process_locus(cooper, locus_key):
         locus_data.skip_code = 0
         return
 
-    if locus_data.depth > cooper.args.max_reads:
+    if not cooper.args.amplicon and locus_data.depth > cooper.args.max_reads:
         subset_reads(cooper, locus_data)
 
     current_reads = set(read_indices)
