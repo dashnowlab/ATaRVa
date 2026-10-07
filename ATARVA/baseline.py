@@ -258,9 +258,11 @@ class Cooper:
                 # process the SA tag to store relevant supplementary alignments
                 if read.has_tag('SA'):
                     if read.query_name not in self.supp_reads:
-                        self.supp_reads[read.query_name] = [read]
+                        # stores both the observed supplementary reads and the loci keys that are genotyped for the read
+                        self.supp_reads[read.query_name] = [[read], [[]]]
                     else:
-                        self.supp_reads[read.query_name].append(read)
+                        self.supp_reads[read.query_name][0].append(read)
+                        self.supp_reads[read.query_name][1].append([])
 
                 # --- assign loci to read ---
                 softclip_loci  = {'keys': [], 'loci': [], 'coords': [], 'flags': []}
@@ -285,12 +287,19 @@ class Cooper:
 
                     # check if the locus is outside the read's reference boundaries check if it's in the softclipped region
                     softclip_result = None
-                    # if locus_start - self.args.flank < read.ref_start:
-                    #     if read.query_name in self.supp_reads:
-                    #         for sa_read in self.supp_reads[read.query_name][:-1]:
-                    #             sa_start, sa_end = sa_read.reference_start, sa_read.reference_end
-                    #             if sa_start <= locus_start - self.args.flank:
-                    #                 process_upstreamsa(self, self.ref, read, sa_read, sa_start, sa_end, sa_read.cigartuples, locus_start - self.args.flank, locus_end + self.args.flank)
+                    if locus_end + self.args.flank > read.ref_end:
+                        if read.query_name in self.supp_reads:
+                            for sa_read in self.supp_reads[read.query_name][0][:-1]:
+                                # Checking if any of the upstream supplementary alignments cover the locus with flanks
+                                sa_start, sa_end = sa_read.reference_start, sa_read.reference_end
+                                if sa_start <= locus_start - self.args.flank and locus_end + self.args.flank <= read.ref_end:
+                                    # this processes the upstream supplementary alignment and stretches the read
+                                    process_upstreamsa(self, self.ref, read, sa_read, sa_start, sa_end, sa_read.cigartuples, locus_start - self.args.flank, locus_end + self.args.flank)
+                                    self.supp_reads[read.query_name][0][-1] = read     # updating the read in the sa reads saved 
+                                    if read.cigartuples[0][0] == 4 and softclip_mode:
+                                        start_softclip = read.cigartuples[0][1]
+                                    if read.cigartuples[-1][0] == 4 and softclip_mode:
+                                        end_softclip = read.cigartuples[-1][1]
 
                     if softclip_mode and (locus_start - self.args.flank < read.ref_start or locus_end + self.args.flank > read.ref_end):
                         softclip_result = check_flank(self, read, locus_start, locus_end, start_softclip, end_softclip)
@@ -343,6 +352,7 @@ class Cooper:
                         read.right_flanks[idx] = right_flank
                         read.loci_coords[idx] = (locus_start - left_flank, locus_end + right_flank)
 
+                # locations which were considered for softclip processing but failed the flank order check are removed from the read's loci list
                 del_locikeys = []
                 for idx, locus_key in enumerate(read.loci_keys):
                     locus_start = self.cooper_loci_info[locus_key].start
@@ -362,6 +372,7 @@ class Cooper:
                     # important to delete the key later
                     read.loci_keys.remove(del_key)
                     del read.loci_data[del_key]
+                # Done filtering loci that failed the flank order check and updating the read's loci information accordingly
 
                 if not read.loci_coords: continue
 
@@ -420,6 +431,19 @@ class Cooper:
                 # --- populate loci data ---
                 for locus_key, locus_read_info in read.loci_data.items():
                     if not locus_read_info.seq: continue
+
+                    # Making sure the locus is not already genotyped for this read (in case of supplementary alignments)
+                    checked_insupp = False
+                    if read.has_tag('SA'):
+                        # not checked before
+                        for supp_lkeys in self.supp_reads[read.query_name][1][:-1]:
+                            if locus_key in supp_lkeys:
+                                checked_insupp = True
+                                break
+                        if not checked_insupp:
+                            self.supp_reads[read.query_name][1][-1].append(locus_key)
+                    if checked_insupp: continue
+
                     ldata = self.cooper_loci_data[locus_key]
                     if not self.args.amplicon and ldata.depth >= self.args.max_reads:
                         if read.mean_qual > ldata.min_read_qual:
@@ -507,7 +531,7 @@ class Cooper:
 
                 for raw_read in self.bam.fetch(chrom, locus_start - SOFT_DISTANCE, locus_end + SOFT_DISTANCE):
 
-                    if raw_read.mapping_quality < self.args.map_qual or raw_read.is_secondary: # check the logic here
+                    if raw_read.mapping_quality < self.args.map_qual or raw_read.is_secondary:
                         continue
 
                     read = ExtendedRead.from_read(raw_read)
@@ -692,6 +716,10 @@ class Cooper:
         # --- category 1 — homozygous ---
         if locus_data.hap_category == 1:
             read_seqs = [read_seqs[rid][0] for rid in locus_data.reads]
+            alen_list    = [len(s) for s in read_seqs]
+            lower, upper = (round(x) for x in np.percentile(np.array(alen_list), [2.5, 97.5]))
+            ucluster     = [str(a) for a in sorted([x for x in alen_list if x < lower or x > upper])]
+
             seq_counter = {}
             for seq in read_seqs:
                 try: seq_counter[seq] += 1
@@ -702,7 +730,8 @@ class Cooper:
                 # homozygous deletion genotype
                 ALT = '<DEL>'
                 locus_data.gt_alens  = (0, 0)
-                locus_data.gt_arange = '0-0,0-0'
+                if ucluster: locus_data.gt_ucluster = ('-'.join(ucluster), '-'.join(ucluster), None)
+                locus_data.gt_arange = f'{lower}-{upper},{lower}-{upper}'
                 locus_data.gt_aseqs  = (ALT, ALT)
 
             elif max_allele == self.ref.fetch(locus.chrom, locus.start, locus.end):
@@ -711,7 +740,8 @@ class Cooper:
                 ref_allele = self.ref.fetch(locus.chrom, locus.start, locus.end)
                 meth_data  = calculate_methylation(locus_data.reads, locus_data.read_methylation, ref_allele)
                 locus_data.gt_alens  = (locus.length, locus.length)
-                locus_data.gt_arange = f'{locus.length}-{locus.length},{locus.length}-{locus.length}'
+                if ucluster: locus_data.gt_ucluster = ('-'.join(ucluster), '-'.join(ucluster), None)
+                locus_data.gt_arange = f'{lower}-{upper},{lower}-{upper}'
                 locus_data.gt_aseqs  = (max_allele, max_allele)
                 locus_data.hap_meth_data  = (meth_data, meth_data)
                 if self.args.decompose:
@@ -722,7 +752,8 @@ class Cooper:
                 ALT, allele_length = alt_sequence(locus_data.read_aseqs, locus_data.reads)
                 meth_data = calculate_methylation(locus_data.reads, locus_data.read_methylation, ALT)
                 locus_data.gt_alens       = (len(ALT), len(ALT))
-                locus_data.gt_arange      = f'{len(ALT)}-{len(ALT)}'
+                if ucluster: locus_data.gt_ucluster    = ('-'.join(ucluster), '-'.join(ucluster), None)
+                locus_data.gt_arange      = f'{lower}-{upper},{lower}-{upper}'
                 locus_data.gt_aseqs       = (ALT, ALT)
                 locus_data.hap_meth_data  = (meth_data, meth_data)
                 if self.args.decompose:
@@ -743,15 +774,17 @@ class Cooper:
         # --- category 3 — phased / heterozygous ---
         elif locus_data.hap_category == 3:
             allele_count = {}
-            phased_reads = []
+            phased_reads = set()
             alen_lists   = []
 
             for h, hap_reads in enumerate(locus_data.hap_read_sets):
-                phased_reads.append(len(hap_reads))
+                phased_reads |= set(hap_reads)
                 seqs      = [read_seqs[rid][0] for rid in hap_reads if read_seqs[rid][0]]
                 alen_list = [len(read_seqs[rid][0]) for rid in hap_reads]
                 alen_lists.append(alen_list)
                 lower, upper = (round(x) for x in np.percentile(np.array(alen_list), [2.5, 97.5]))
+                # lengths of the repeat in reads that are unclustered (i.e., outside the 2.5th and 97.5th percentiles)
+                ucluster     = [str(a) for a in sorted([x for x in alen_list if x < lower or x > upper])]
 
                 if seqs:
                     ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
@@ -769,6 +802,7 @@ class Cooper:
                     locus_data.gt_aseqs        = (ALT, locus_data.gt_aseqs[1])
                     locus_data.gt_alens        = (allele_length, locus_data.gt_alens[1])
                     locus_data.gt_arange       = (f'{lower}-{upper}', locus_data.gt_arange[1])
+                    locus_data.gt_ucluster     = ('-'.join(ucluster), locus_data.gt_ucluster[1], None)
                     locus_data.hap_meth_data   = (meth_data, locus_data.hap_meth_data[1])
                     if self.args.decompose and ALT != '<DEL>':
                         decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
@@ -776,6 +810,7 @@ class Cooper:
                 else:
                     locus_data.gt_aseqs        = (locus_data.gt_aseqs[0], ALT)
                     locus_data.gt_alens        = (locus_data.gt_alens[0], allele_length)
+                    locus_data.gt_ucluster     = (locus_data.gt_ucluster[0], '-'.join(ucluster), None)
                     locus_data.gt_arange       = (locus_data.gt_arange[0], f'{lower}-{upper}')
                     locus_data.hap_meth_data   = (locus_data.hap_meth_data[0], meth_data)
                     if self.args.decompose and ALT != '<DEL>':
@@ -785,6 +820,10 @@ class Cooper:
             (l1, u1) = np.percentile(alen_lists[0], [2.5, 97.5])
             (l2, u2) = np.percentile(alen_lists[1], [2.5, 97.5])
             allele_range = f'{l1}-{u1},{l2}-{u2}'
+            # lengths of the repeat in reads that are unclustered (i.e., outside the 2.5th and 97.5th percentiles)
+            ucluster = [str(len(read_seqs[rid][0])) for rid in locus_data.reads if rid not in phased_reads]
+            if ucluster:
+                locus_data.gt_ucluster = (locus_data.gt_ucluster[0], locus_data.gt_ucluster[1], '-'.join([str(x) for x in sorted(ucluster)]))
 
             write_heterozygous_call(self, locus_key)
             locus_data.is_genotyped = 1
