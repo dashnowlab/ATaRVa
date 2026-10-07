@@ -659,7 +659,7 @@ def md_stats(md):
     return matches, mismatches, deletions
 
 
-def cigar_stats(cigar):
+def cigar_stats(cigar, include_X=True):
     """
     Extract match and deletion counts from CIGAR string.
 
@@ -667,9 +667,9 @@ def cigar_stats(cigar):
     :return: tuple (matches, deletions)
     """
 
-    match_len = 0
-    del_len = 0
-
+    matches   = 0
+    deletions = 0
+    match_ops = ('M', '=', 'X') if include_X else ('M', '=')
     length = ''
     op = ''
     for c in cigar:
@@ -677,14 +677,14 @@ def cigar_stats(cigar):
             length += c
         else:
             op = c
-            if op in ('M', '=', 'X'):
-                match_len += int(length)
+            if op in match_ops:
+                matches += int(length)
             elif op == 'D':
-                del_len += int(length)
+                deletions += int(length)
             length = ''
             op = ''
 
-    return match_len, del_len
+    return matches, deletions
 
 
 def valid_md(md, cigar):
@@ -768,25 +768,28 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
     :return: dict with 'upstream' and 'downstream' coordinates in read, or None if locus not in softclips
     """
 
-    NONREP_FLANK = 30
-    score_threshold = int(2 * (0.9 * NONREP_FLANK))  # a match score of 90% as threshold
-    low_score_threshold = int(2 * (0.8 * NONREP_FLANK))  # a match score of 90% as threshold
+    NONREP_FLANK = 60
+    MINFLANK_THRESHOLD = 20
+    THRESHOLD = 0.8  # 80% MATCHES THRESHOLD
 
     # contains reference and read coordinates of upstream and downstream flanks of a locus; initialized to None
     result = {'upstream': None, 'downstream': None}  
 
     # looking for the upstream flank for loci that could be in upstream softclip
-    if locus_start - NONREP_FLANK < read.ref_start and up_softclip > NONREP_FLANK:
+    if locus_start - MINFLANK_THRESHOLD < read.ref_start and up_softclip > MINFLANK_THRESHOLD:
         upstream     = cooper.ref.fetch(read.chrom, locus_start - NONREP_FLANK, locus_start)
         softclip_seq = read.query_sequence[:up_softclip]
-        # build once per read/sequence X
-        automaton  = build_kmer_automaton(upstream)
-        kmer_match = has_kmer_match(automaton, softclip_seq)
-        if not kmer_match: return None
+        
+        # checks if there a 10-mer match between the flank and the softclip and then proceeds to align
+        # automaton  = build_kmer_automaton(upstream)
+        # kmer_match = has_kmer_match(automaton, softclip_seq)
+        # if not kmer_match: return None
 
         alignment_score, _align_score, target_begin, target_end, query_begin, query_end, sCigar = stripSW(Inputs(softclip_seq, upstream), False)
-
-        if alignment_score >= score_threshold and target_end > 0 and _align_score < low_score_threshold:
+        query_length = query_end - query_begin + 1
+        matches, _   = cigar_stats(sCigar, False)
+        condition = query_length >= MINFLANK_THRESHOLD and matches/query_length >= THRESHOLD
+        if condition:
             result['upstream'] = (locus_start - NONREP_FLANK + query_begin,
                                   locus_start - NONREP_FLANK + query_end,
                                   target_begin, target_end, alignment_score)
@@ -798,8 +801,10 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
                 softclip_seq  = read.query_sequence[target_end:up_softclip]
                 downstream = cooper.ref.fetch(read.chrom, locus_end, locus_end + NONREP_FLANK)
                 alignment_score_down, _align_score_down, target_begin_down, target_end_down, query_begin_down, query_end_down, sCigar_down = stripSW(Inputs(softclip_seq, downstream), False)
-
-                if alignment_score_down >= score_threshold and _align_score_down < low_score_threshold:
+                query_length_down = query_end_down - query_begin_down + 1
+                matches_down, _ = cigar_stats(sCigar_down, False)
+                condition_down = query_length_down >= MINFLANK_THRESHOLD and matches_down/query_length_down >= THRESHOLD
+                if condition_down:
                     result['downstream'] = (locus_end + query_begin_down,
                                             locus_end + query_end_down,
                                             target_begin_down + (target_end),
@@ -808,16 +813,21 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
                 result['downstream'] = (read.ref_start, read.ref_start, read.query_start, read.query_start, None)  # Indicate that downstream flank is already covered
 
     # Check if downstream flank region is in right softclip
-    if locus_end + NONREP_FLANK > read.ref_end and down_softclip > NONREP_FLANK:
+    if locus_end + MINFLANK_THRESHOLD > read.ref_end and down_softclip > MINFLANK_THRESHOLD:
         downstream     = cooper.ref.fetch(read.chrom, locus_end, locus_end + NONREP_FLANK)
         softclip_seq   = read.query_sequence[-down_softclip:]
-        automaton  = build_kmer_automaton(downstream)
-        kmer_match = has_kmer_match(automaton, softclip_seq)
-        if not kmer_match: return None
 
+        # checks if there a 10-mer match between the flank and the softclip and then proceeds to align
+        # automaton  = build_kmer_automaton(downstream)
+        # kmer_match = has_kmer_match(automaton, softclip_seq)
+        # if not kmer_match: return None
+        
         alignment_score, _align_score, target_begin, target_end, query_begin, query_end, sCigar = stripSW(Inputs(softclip_seq, downstream), False)
+        query_length = query_end - query_begin + 1
+        matches, _   = cigar_stats(sCigar, False)
+        condition = query_length >= MINFLANK_THRESHOLD and matches/query_length >= THRESHOLD
 
-        if alignment_score >= score_threshold and target_begin < len(softclip_seq) and _align_score < low_score_threshold:
+        if condition:
             result['downstream'] = (locus_end + query_begin,
                                     locus_end + query_end,
                                     read.query_end + target_begin,
@@ -828,8 +838,10 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
                 softclip_seq = read.query_sequence[read.query_end:read.query_end + target_begin]
                 upstream = cooper.ref.fetch(read.chrom, locus_start - NONREP_FLANK, locus_start)
                 alignment_score_up, _align_score_up, target_begin_up, target_end_up, query_begin_up, query_end_up, sCigar_up = stripSW(Inputs(softclip_seq, upstream), False)
-
-                if alignment_score_up >= score_threshold and _align_score_up < low_score_threshold:
+                matches_up, _   = cigar_stats(sCigar_up, False)
+                query_length_up = query_end_up - query_begin_up + 1
+                condition_up    = query_length_up >= MINFLANK_THRESHOLD and matches_up/query_length_up >= THRESHOLD
+                if condition_up:
                     result['upstream'] = (locus_start - NONREP_FLANK + query_begin_up,
                                           locus_start - NONREP_FLANK + query_end_up,
                                           read.query_end + target_begin_up,

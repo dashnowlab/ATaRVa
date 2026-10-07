@@ -190,7 +190,7 @@ def blending(process_df, outfile, pidx, tidx, nsamples):
         id      = '.'
         q       = '.'
         alt     = ','.join(ALTs) if ALTs else '.'
-        format  = 'GT:AL:CN:LPM:AR:SD:DP:SN:SQ:MA:MR:DS:MV'
+        format = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:OL:FV:PS'
 
         repeat_info = [chrom, start, id, ref_seq, alt, q, filter, info, format, *sample_formats]
         del sample_formats

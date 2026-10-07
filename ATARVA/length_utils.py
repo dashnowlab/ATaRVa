@@ -90,8 +90,8 @@ def homozygous_call(cooper, locus_key):
     locus_data   = cooper.cooper_loci_data[locus_key]
     hap_reads    = locus_data.hap_read_sets[0]
     hap_lengths  = locus_data.hap_alen_sets[0]
-
     lower, upper = (round(x) for x in np.percentile(np.array(hap_lengths), [2.5, 97.5]))
+    ucluster     = [str(a) for a in sorted([x for x in hap_lengths if x < lower or x > upper])]
 
     ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
 
@@ -99,9 +99,14 @@ def homozygous_call(cooper, locus_key):
     locus_data.gt_alens        = (allele_length, None)
     locus_data.hap_meth_data   = (calculate_methylation(hap_reads, locus_data.read_methylation, ALT), None)
     locus_data.gt_arange       = (f'{lower}-{upper}', None)
+    locus_data.gt_ucluster     = ('-'.join(ucluster), None)
     if cooper.args.decompose and ALT != '<DEL>':
         decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
         locus_data.gt_decomp_seqs  = (decomp_seq, None)
+
+    ucluster = [len(locus_data.read_aseqs[rid][0]) for rid in locus_data.reads if rid not in hap_reads]
+    if ucluster:
+        locus_data.gt_ucluster = (locus_data.gt_ucluster[0], locus_data.gt_ucluster[1], '-'.join([str(x) for x in sorted(ucluster)]))
 
     write_homozygous_call(cooper, locus_key)
     return
@@ -119,17 +124,21 @@ def heterozygous_call(cooper, locus_key):
     locus_data = cooper.cooper_loci_data[locus_key]
     hap_read_sets = locus_data.hap_read_sets
     hap_alen_sets = locus_data.hap_alen_sets
+    phased_reads = set()
 
     for i in range(2):
         hap_reads = hap_read_sets[i]
+        phased_reads |= set(hap_reads)
         hap_lengths = hap_alen_sets[i]
         ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
         lower, upper = (round(x) for x in np.percentile(np.array(hap_lengths), [2.5, 97.5]))
+        ucluster = [str(a) for a in sorted([x for x in hap_lengths if x < lower or x > upper])]
         if i == 0:
             locus_data.gt_aseqs         = (ALT, locus_data.gt_aseqs[1])
             locus_data.gt_alens         = (allele_length, locus_data.gt_alens[1])
             locus_data.hap_meth_data    = (calculate_methylation(hap_reads, locus_data.read_methylation, ALT), locus_data.hap_meth_data[1])
             locus_data.gt_arange        = (f'{lower}-{upper}', locus_data.gt_arange[1])
+            locus_data.gt_ucluster      = ('-'.join(ucluster), locus_data.gt_ucluster[1])
             if cooper.args.decompose and ALT != '<DEL>':
                 decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
                 locus_data.gt_decomp_seqs   = (decomp_seq, locus_data.gt_decomp_seqs[1])
@@ -138,9 +147,14 @@ def heterozygous_call(cooper, locus_key):
             locus_data.gt_alens         = (locus_data.gt_alens[0], allele_length)
             locus_data.hap_meth_data    = (locus_data.hap_meth_data[0], calculate_methylation(hap_reads, locus_data.read_methylation, ALT))
             locus_data.gt_arange        = (locus_data.gt_arange[0], f'{lower}-{upper}')
+            locus_data.gt_ucluster      = (locus_data.gt_ucluster[0], '-'.join(ucluster))
             if cooper.args.decompose and ALT != 'DEL':
                 decomp_seq, nonrep_fraction = motif_decomposition(ALT, locus.motif_length)
                 locus_data.gt_decomp_seqs   = (locus_data.gt_decomp_seqs[0], decomp_seq)
+
+    ucluster = [len(locus_data.read_aseqs[rid][0]) for rid in locus_data.reads if rid not in phased_reads]
+    if ucluster:
+        locus_data.gt_ucluster = (locus_data.gt_ucluster[0], locus_data.gt_ucluster[1], '-'.join([str(x) for x in sorted(ucluster)]))
 
     write_heterozygous_call(cooper, locus_key)
 
@@ -322,49 +336,113 @@ def length_genotyper_gmm(cooper, locus_key):
                      hap_read_sets, min_cluster_size)
 
 
-def merge_hdbscan_clusters(cooper, locus_key, filtered_alens, filtered_seqs, labels):
+def collapse_condensed_tree(clusterer, n_clusters=2):
     """
-    Merge HDBSCAN clusters if they are too close in allele length space.
+    Collapse HDBSCAN condensed-tree clusters upward until n_clusters
+    remain.
 
-    :param cooper:          cooper object
-    :param locus_key:       key for the locus
-    :param filtered_alens:  list of filtered allele lengths
-    :param filtered_seqs:   list of filtered sequences
-    :param labels:          cluster labels from HDBSCAN
+    Returns
+    -------
+    cluster_labels : np.ndarray
+        Cluster label for every original observation.
+        Noise = -1.
+    clusters : list
+        Final condensed-tree cluster IDs.
     """
 
-    locus_data = cooper.cooper_loci_data[locus_key]
-    unique_labels = set(labels) - {-1}  # -1 = noise/outlier
+    tree = clusterer.condensed_tree_.to_numpy()
 
-    cluster_seqs = {label: [filtered_seqs[i] for i, l in enumerate(labels) if l == label] for label in unique_labels}
-    consensus_seqs = {} # {label: consensus_seq_poa(seqs) for label, seqs in cluster_seqs.items()}
-    for label, seqs in cluster_seqs.items():
-        if max(len(seq) for seq in seqs)  == 0:
-            consensus_seqs[label] = ''
-        else:
-            consensus_seqs[label] = consensus_seq_poa(seqs)
+    parent = tree["parent"]
+    child = tree["child"]
+    child_size = tree["child_size"]
 
-    # Compute cluster centers
-    cluster_centers = {label: len(consensus) for label, consensus in consensus_seqs.items()}
-    ordered_centers = sorted(cluster_centers.keys(), key=lambda x: cluster_centers[x])
+    # Cluster IDs are the nodes that have children.
+    cluster_nodes = set(parent)
 
-    distant_two_clusters = [ordered_centers[0], ordered_centers[-1]]
-    merged_clusters = [[ordered_centers[0]], [ordered_centers[-1]]]
-    for c in ordered_centers[1:-1]:
-        ed = [sz.edit_distance(consensus_seqs[x], consensus_seqs[c]) for x in distant_two_clusters]
-        if ed[0] < ed[1]:
-            merged_clusters[0].append(c)
-        else:
-            merged_clusters[1].append(c)
+    # Start with the clusters selected by HDBSCAN's normal flat clustering.
+    selected = list(clusterer.condensed_tree_._select_clusters())
 
-    clustered_reads = {}
-    for i, cluster_group in enumerate(merged_clusters):
-        group_reads = []
-        for label in cluster_group:
-            group_reads.extend([i for i, l in enumerate(labels) if l == label])
-        clustered_reads[i] = group_reads
+    # If already <= requested number
+    if len(selected) <= n_clusters:
+        clusters = selected
+    else:
+        clusters = selected.copy()
 
-    return clustered_reads
+        # Parent -> children mapping
+        children = {}
+        for p, c in zip(parent, child):
+            children.setdefault(p, []).append(c)
+
+        # Repeatedly collapse sibling clusters into their parent.
+        while len(clusters) > n_clusters:
+
+            cluster_set = set(clusters)
+
+            # Find parents whose children contain >= 2 currently
+            # represented clusters.
+            candidates = []
+
+            for p, cs in children.items():
+                represented = cluster_set.intersection(cs)
+
+                if len(represented) >= 2:
+                    # Number of clusters that would disappear after
+                    # replacing represented children by this parent.
+                    reduction = len(represented) - 1
+
+                    candidates.append(
+                        (reduction, p, represented)
+                    )
+
+            if not candidates:
+                break
+
+            # Prefer a collapse that gets us closest to n_clusters.
+            candidates.sort(
+                key=lambda x: (
+                    abs((len(clusters) - x[0]) - n_clusters),
+                    -x[0]
+                )
+            )
+
+            _, p, represented = candidates[0]
+
+            clusters = [
+                c for c in clusters
+                if c not in represented
+            ]
+
+            clusters.append(p)
+
+    # ---------------------------------------------------------
+    # Convert final condensed-tree clusters to observation labels
+    # ---------------------------------------------------------
+
+    # Build child -> parent mapping
+    child_to_parent = dict(zip(child, parent))
+
+    # Points are leaves in the condensed tree.
+    final_clusters = set(clusters)
+
+    labels = np.full(clusterer.labels_.shape, -1, dtype=int)
+
+    # Map each observation to its first ancestor belonging to
+    # one of the final clusters.
+    for point in range(len(labels)):
+
+        node = point
+
+        while node not in final_clusters:
+
+            if node not in child_to_parent:
+                break
+
+            node = child_to_parent[node]
+
+        if node in final_clusters:
+            labels[point] = clusters.index(node)
+
+    return labels, clusters
 
 
 def length_genotyper_hdbscan(cooper, locus_key):
@@ -414,13 +492,6 @@ def length_genotyper_hdbscan(cooper, locus_key):
     feature_array = np.column_stack([filtered_alens, dist_normalized])
 
     # ── HDBSCAN clustering with 2D features ─────────────────────────────
-    # clusterer = HDBSCAN(
-    #     min_cluster_size=4,        # smaller than the upper group (15), so it survives
-    #     min_samples=3,              # low, so points aren't easily labelled noise
-    #     cluster_selection_method="eom",   # try "eom" first; "leaf" if it merges/under-splits
-    #     allow_single_cluster=True,
-    # ).fit(feature_array)
-
     clusterer = HDBSCAN(
         min_cluster_size     = max(MIN_READS, int(MIN_CLUSTER_FRAC * len(filtered_alens))),
         allow_single_cluster = True
@@ -440,7 +511,12 @@ def length_genotyper_hdbscan(cooper, locus_key):
     }
 
     # if len(clusters) > 2:
-    #     clusters = merge_hdbscan_clusters(cooper, locus_key, filtered_alens, filtered_seqs, labels)
+    #     collapsed = collapse_condensed_tree(clusterer, n_clusters=2)
+    #     clusters = {}
+    #     for i, label in enumerate(collapsed[0]):
+    #         if label not in clusters:
+    #             clusters[label] = []
+    #         clusters[label].append(i)
 
     # ── take two largest clusters ─────────────────────────────────────
     top2      = sorted(clusters, key=lambda l: len(clusters[l]), reverse=True)[:2]
@@ -547,3 +623,199 @@ def length_genotyper_histogram(cooper, locus_key):
     _assign_genotype(cooper, locus_key, locus_data,
                      c1_idx, c2_idx, c1_lengths, c2_lengths,
                      hap_read_sets, min_cluster_size)
+
+
+def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
+    """
+    Calculate the score for each peak based on prominence, width, and skewness.
+
+    :param x_grid:             grid of x values for density estimation
+    :param density:            density values corresponding to x_grid
+    :param initial_peaks:      indices of detected peaks in the density
+    :param valleys:            indices of valleys between peaks in the density
+    :param top_contour_widths: widths of the peaks at half prominence
+    :return:                    final_score, initial_prominence, area_covered
+    """
+
+    peak_density   = density[initial_peaks]
+    valley_density = density[valleys]
+    peak_points    = x_grid[initial_peaks]
+    initial_score      = []
+    initial_prominence = []
+    initial_skewness   = []
+    area_covered       = []
+    for idx in range(len(peak_density)):
+        if idx == 0:
+            f_dense   = density[0]
+            base_left = x_grid[0][0]
+        
+        if idx < len(peak_density)-1:
+            valley_dense = valley_density[idx]
+            base_right   = x_grid[valleys[idx]][0]
+        else:
+            valley_dense = density[-1]
+            base_right   = x_grid[-1][0]
+
+        max_point  = max(f_dense, valley_dense)
+        prominence = (peak_density[idx] - max_point)# - diffs
+        f_dense    = valley_dense
+
+        flattened_x_grid = x_grid[:, 0]
+        mask   = (flattened_x_grid >= base_left) & (flattened_x_grid <= base_right)
+        x_vals = flattened_x_grid[mask]
+        y_vals = density[mask]
+
+        area = np.trapz(y_vals, x_vals)
+        area_covered.append(area)
+        min_area = 1 if area >= 0.02 else 0 # min area covered by the peak should be atleast 2% to be considered as valid peak
+
+        current_peak = peak_points[idx][0]
+        L = (current_peak - base_left); R = (base_right-current_peak) # distance between left boundary to the peak and right boundary to the peak
+        
+        eps = 1e-8
+        # normalized asymmetry/skewness
+        K = abs(L - R) / (L + R + eps)
+        initial_skewness.append(K)
+        
+        # final score
+        score = ((prominence ** 2) / ((top_contour_widths[idx] + eps) ** 2)) * min_area
+    
+        initial_score.append(score)
+        initial_prominence.append(prominence)
+        
+        base_left = base_right
+
+    initial_skewness = np.array(initial_skewness)
+    median_K         = np.median(initial_skewness)
+    mad_K            = np.median( np.abs( initial_skewness - median_K ) ) + 1e-8
+    zK               = (initial_skewness - median_K) / mad_K
+    quality_zk       = 1 / (1 + np.exp(zK))
+
+    final_score = ( np.array(initial_score) * quality_zk )
+        
+    return final_score, initial_prominence, area_covered
+
+
+def length_genotyper_kde(cooper, locus_key):
+    """
+    Genotype using Kernel Density Estimation (KDE) for peak detection.
+    
+    :param cooper:     cooper object
+    :param locus_key:  key for the locus
+    """
+
+    MIN_READS        = 3
+    MIN_CLUSTER_FRAC = 0.15
+    WINDOW_FRAC      = 0.1
+    BIN_WIDTH        = 5
+
+    locus_data = cooper.cooper_loci_data[locus_key]
+    locus      = cooper.cooper_loci_info[locus_key]
+    read_alens = locus_data.read_alens
+
+    read_indices    = sorted(locus_data.reads)
+    unique_alens    = set(locus_data.allele_lengths)
+    singleton_alens = {alen for alen, count in locus_data.halen_frequency.items() if count == 1}
+    windows         = {i: (round(i * (1 - WINDOW_FRAC)), round(i * (1 + WINDOW_FRAC)))
+                        for i in unique_alens}
+
+    main_read_ids  = []
+    filtered_alens = []
+    filtered_seqs  = []
+    for read_index in read_indices:
+        alen = read_alens[read_index][0]
+        if alen in singleton_alens:
+            if not any(lo <= alen <= hi for i, (lo, hi) in windows.items() if i != alen):
+                continue
+        main_read_ids.append(read_index)
+        filtered_alens.append(alen)
+        filtered_seqs.append(locus_data.read_aseqs[read_index][0])
+
+    alen_units = np.array([length//locus.motif_length for length in filtered_alens])
+    #### KDE with mode peaks and valley for definitive split point for each peak based on the area under the peaks
+    bandwidth = 10; tot_data_points = 1000 # for amplicon, to get better density estimation and peaks
+    stdev = np.std(alen_units)
+    if stdev != 0:
+        bandwidth = 0.5 * stdev * (len(alen_units) ** (-1/5))
+
+    alen_units = alen_units.reshape(-1, 1)
+
+    # Fit kde to the data
+    kde = KernelDensity(kernel='gaussian', algorithm='kd_tree', metric='minkowski', bandwidth=bandwidth).fit(alen_units)
+    # Evaluate the density on a grid
+    x_grid      = np.linspace(alen_units.min()-50, alen_units.max()+50, tot_data_points).reshape(-1, 1)
+    log_density = kde.score_samples(x_grid)
+    density     = np.exp(log_density)
+
+    # Analysing the distribution to identify the sharp narrow peaks
+    initial_peaks, _   = find_peaks(density)
+    original_widths    = peak_widths(density, initial_peaks)
+    top_contour_widths = peak_widths(density, initial_peaks, rel_height=0.2)
+    valleys, _         = find_peaks(-density)
+
+    score, initial_prominence, area_covered = score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths[0])
+    narrow_peaks_idx = list(np.argsort(score)[-2:]) # taking top two peaks with more area under the curve, as the peaks with higher area will be sharper and more prominent
+
+    top_2_prominence   = [initial_prominence[idx] for idx in narrow_peaks_idx]
+    min_height_covered = min(top_2_prominence) >= 0.15 * (max(top_2_prominence)) # min peak should have atleast 15% of the max peak prominence to be considered as a valid peak
+    min_area_covered   = all([area_covered[idx]>=0.05 for idx in narrow_peaks_idx]) # both peaks should have atleast 5% of the area covered to be considered as valid peaks
+
+    if min_height_covered or min_area_covered: # any of this should be True to consider both peaks as valid peaks, otherwise only the max peak will be considered for split
+        pass
+    elif (narrow_peaks_idx[0] > narrow_peaks_idx[1]) and (area_covered[narrow_peaks_idx[0]] >= 0.02): # if the min_peak is on right side of the max_peak and if it has atleast 2% of total area consider both peaks as valid; to report the longer allele
+        pass
+    else: # if the min_peak is left side of the max_peak, then consider only the max_peak as valid and as homozygous 
+        narrow_peaks_idx = [narrow_peaks_idx[1]]
+
+    width     = sorted(original_widths[0][narrow_peaks_idx])
+    top_count = len(narrow_peaks_idx)
+
+    # Getting new peaks with analysed data
+    peaks, _  = find_peaks(density, width = width)
+
+    # Choose split 
+    peak_heights = density[peaks] # extracting only the peaks frim density
+    top_peaks    = peaks[np.argsort(peak_heights)[-top_count:]] # taking top two peaks
+    sorted_peaks = sorted(top_peaks)
+
+    # flattening the data and initializing the labels for each data point as -1 (unassigned)
+    alen_units = alen_units.flatten()
+    labels     = np.full(len(alen_units), -1)
+
+    left = sorted_peaks[0]
+    # boundaries of left peak
+    peak1_left  = valleys[(valleys < left)]
+    p1_start    = peak1_left[-1] if peak1_left.size > 0 else 0
+    peak1_right = valleys[(valleys > left)]
+    p1_end      = peak1_right[0] if peak1_right.size > 0 else len(x_grid) - 1
+
+    p1_left_split = x_grid[p1_start][0]
+    p1_right_split = x_grid[p1_end][0]
+
+    p1_allele_bool = (alen_units >= p1_left_split) & (alen_units <= p1_right_split)
+    if p1_allele_bool.sum() > 4: # atleast 5 reads should be there in cluster to consider it as valid cluster
+        labels[p1_allele_bool] = 0
+
+    if len(sorted_peaks) > 1:
+        right = sorted_peaks[1]
+        # boundaries of right peak
+        peak2_left  = valleys[(valleys < right)]
+        p2_start    = peak2_left[-1] if peak2_left.size > 0 else 0
+        peak2_right = valleys[(valleys > right)]
+        p2_end      = peak2_right[0] if peak2_right.size > 0 else len(x_grid) - 1
+
+        p2_left_split  = x_grid[p2_start][0]
+        p2_right_split = x_grid[p2_end][0]
+
+        labels[(alen_units >= p2_left_split) & (alen_units <= p2_right_split)] = 1 # no min read cutoff for the longer allele
+
+    c1_idx = [i for i, x in enumerate(labels) if x == 0]
+    c2_idx = [i for i, x in enumerate(labels) if x == 1]
+
+    c1_lengths = [filtered_alens[i] for i in c1_idx]
+    c2_lengths = [filtered_alens[i] for i in c2_idx]
+
+    _assign_genotype(cooper, locus_key, locus_data,
+                     c1_idx, c2_idx, c1_lengths, c2_lengths,
+                     ( [main_read_ids[i] for i in c1_idx], [main_read_ids[i] for i in c2_idx] ),
+                     min_cluster_size = 1) # no min cluster size cutoff for the longer allele

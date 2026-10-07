@@ -66,8 +66,9 @@ def vcf_writer(args, out, bam, bam_name):
     vcf_header.formats.add("MR", number='.', type="Integer",  description="Number of informative reads for methylation scoring for each allele")
     vcf_header.formats.add("DS", number='A', type="String",   description="Motif decomposed sequence for each allele sequence")
     vcf_header.formats.add("MV", number='.', type="String",   description="Base methylation score encoded for visualization for each allele")
-    vcf_header.formats.add("PS", number='1', type="String",   description="Phase Set assigned in the phasing process if available in alignment file")
+    vcf_header.formats.add("OL", number='1', type="String",   description="The outlier lengths observed in the phased reads and unphased reads for the locus")
     vcf_header.formats.add("FV", number='1', type="String",   description="Flag indicating presence of variants in the flank of the repeat locus")
+    vcf_header.formats.add("PS", number='1', type="String",   description="Phase Set assigned in the phasing process if available in alignment file")
 
     out.write(str(vcf_header))
 
@@ -97,7 +98,7 @@ def write_fail_call(cooper, locus_key):
     optional_tag = f';ID={locus.name}' if locus.name else ';ID=.'
 
     INFO = 'AC=0;AN=0;MOTIF=' + str(locus.motif) + ';START=' + str(locus.start) + ';END=' + str(locus.end) + optional_tag + ';REFCN='+refcn
-    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:FV'
+    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:OL:FV'
     SAMPLE = f'.:.:.:.:.:{depth}:.:.:.:.:.:.:.'
 
     print(*[locus.chrom, locus.start + 1, '.',  cooper.ref.fetch(locus.chrom, locus.start, locus.end), '.', 0, FILTER, INFO, FORMAT, SAMPLE], file=cooper.outhandle, sep='\t')
@@ -111,7 +112,7 @@ def write_homozygous_call(cooper, locus_key):
     :param locus_key:        locus identifier string
     """
 
-    locus = cooper.cooper_loci_info[locus_key]
+    locus      = cooper.cooper_loci_info[locus_key]
     locus_data = cooper.cooper_loci_data[locus_key]
 
     # --- locus optional tag ---
@@ -165,7 +166,7 @@ def write_homozygous_call(cooper, locus_key):
         INFO += f';CT=<TAG>'
 
     # --- SAMPLE field ---
-    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:FV'
+    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:OL:FV:PS'
 
     allele_length = 0 if allele == '<DEL>' else len(allele)
     depth         = locus_data.depth
@@ -178,6 +179,18 @@ def write_homozygous_call(cooper, locus_key):
     MV = f'{meth_vis_str}'   if cooper.haploid else f'{meth_vis_str},{meth_vis_str}'
     MR = f'{meth_reads_str}' if cooper.haploid else f'{meth_reads_str},{meth_reads_str}'
     FV = '1' if locus_data.flank_var else '0'
+    OL = ''
+    PS = '.'
+    for uclust in locus_data.gt_ucluster:
+        if uclust is None: OL += '.,'
+        elif len(uclust) == 0: OL += '.,'
+        else: OL += uclust + ','
+    OL = OL.rstrip(',')
+    if locus_data.hap_category == 3 and locus_data.is_phased:
+        PS = list(set(locus_data.read_haplotag_ps.values())) if locus_data.read_haplotag_ps is not None else '.'
+        if PS != '.': PS = PS[0]
+        FORMAT +=   ':PS'
+        SAMPLE += f':{PS}'
     SAMPLE = (
             f'{GT}'
             f':{length_GT}'
@@ -190,7 +203,9 @@ def write_homozygous_call(cooper, locus_key):
             f':{MR}'
             f':{decomposed_seq}'
             f':{MV}'
+            f':{OL}'
             f':{FV}'
+            f':{PS}'
         )
 
     # --- write VCF record ---
@@ -300,8 +315,21 @@ def write_heterozygous_call(cooper, locus_key):
         num_snps  = locus_data.n_phasing_snps
         snp_quals = locus_data.phasing_snp_quals
     if snp_quals == '': snp_quals = '.'
-    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:FV'
+    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:OL:FV'
     FV = '1' if locus_data.flank_var else '0'
+    OL = ''
+    for uclust in locus_data.gt_ucluster:
+        if uclust is None: OL += '.,'
+        elif len(uclust) == 0: OL += '.,'
+        else: OL += uclust + ','
+    OL = OL.rstrip(',')
+    PS = '.'
+    if locus_data.hap_category == 3 and locus_data.is_phased:
+        PS = list(set(locus_data.read_haplotag_ps.values())) if locus_data.read_haplotag_ps is not None else '.'
+        if PS != '.':
+            PS = PS[0]
+        FORMAT += ':PS'
+        SAMPLE += f':{PS}'
     SAMPLE = (
             f'{GT}'
             f':{length_GT}'
@@ -315,13 +343,9 @@ def write_heterozygous_call(cooper, locus_key):
             f':{MR}'
             f':{decomposed_seqs}'
             f':{MV}'
+            f':{OL}'
             f':{FV}'
+            f':{PS}'
         )
-    if locus_data.hap_category == 3 and locus_data.is_phased:
-        PS = list(set(locus_data.read_haplotag_ps.values())) if locus_data.read_haplotag_ps is not None else '.'
-        if PS != '.':
-            PS = PS[0]
-        FORMAT += ':PS'
-        SAMPLE += f':{PS}'
 
     print(*[cooper.chrom, locus.start + 1, '.',  ref_allele, ALT, 0, 'PASS', INFO, FORMAT, SAMPLE], file=cooper.outhandle, sep='\t')
