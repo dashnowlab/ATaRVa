@@ -280,9 +280,8 @@ def genotype_run(args) -> None:
             all_success = True
             errors      = []
 
-            with tqdm(total=args.threads, desc='Processing',
-                    ascii='_>', ncols=75,
-                    bar_format='{l_bar}{bar}{n_fmt}/{total_fmt}') as pbar:
+            with tqdm(total=args.threads, desc='Processing', ascii='_>', ncols=75,
+                      bar_format='{l_bar}{bar}{n_fmt}/{total_fmt}') as pbar:
 
                 def on_success(_): pbar.update()
 

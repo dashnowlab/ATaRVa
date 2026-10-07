@@ -122,6 +122,7 @@ class LocusVariation:
     gt_aseqs:          tuple = (None, None)   # (allele1, allele2) allele sequences for the genotype call
     gt_alens:          tuple = (None, None)   # (alen1, alen2) allele lengths for the genotype call
     gt_arange:         tuple = (None, None)   # allele length range for the genotype call, in the format 'lower1-upper1,lower2-upper2'
+    gt_ucluster:       tuple = (None, None, None)   # allele length range for the genotype call, in the format 'lower1-upper1,lower2-upper2'
     gt_decomp_seqs:    tuple = (None, None)   # (decomposed allele1, decomposed allele2) motif decomposition of the allele sequences
     is_phased:         bool  = False          # whether haplotagging was successful
     skip_code:         int   = 10             # whether genotyping failed for the locus
