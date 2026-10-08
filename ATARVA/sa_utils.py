@@ -1,6 +1,6 @@
 from ATARVA.process_softclips import align_sequences, generate_md_tag, generate_cs_tag
 from ATARVA.process_softclips import _cigar_tuples, _cigar_string, _collapse_mismatches
-from ATARVA.process_softclips import join_cigars, join_mdtags, join_cstags
+from ATARVA.process_softclips import join_cigars, join_mdtags, join_cstags, valid_md
 
 import re
 
@@ -38,6 +38,13 @@ def _query_length(cigartuples: list[tuple[int, int]]):
             query_length += length
     return query_length
 
+def _ref_length(cigartuples: list[tuple[int, int]]):
+    ref_length = 0
+    for op, length in cigartuples:
+        if op in (0, 2, 3, 7, 8): # M/D/N/=/X consume reference
+            ref_length += length
+    return ref_length
+
 
 def _trim_upcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
     """
@@ -54,6 +61,10 @@ def _trim_upcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
         if op == 1: qpos += length # insertion
         if op == 2: # deletion
             for _ in range(length):
+                if _ == 0:
+                    if rpos >= repflank_end:
+                        trimmed_cigar = [(2, length)] + cigar_tuples[idx+1:]
+                        return rpos, qpos, trimmed_cigar
                 rpos += 1
                 if rpos >= repflank_end:
                     trimmed_cigar = [(2, length - (_ + 1))] + cigar_tuples[idx+1:]
@@ -61,6 +72,10 @@ def _trim_upcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
 
         if op == 0:
             for _ in range(length):
+                if _ == 0:
+                    if rpos >= repflank_end:
+                        trimmed_cigar = [(0, length)] + cigar_tuples[idx+1:]
+                        return rpos, qpos, trimmed_cigar
                 rpos += 1
                 qpos += 1
                 if rpos >= repflank_end:
@@ -83,6 +98,10 @@ def _trim_downcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
         if op == 1: qpos -= length # insertion
         if op == 2: # deletion
             for _ in range(length):
+                if _ == 0:
+                    if rpos <= repflank_start:
+                        trimmed_cigar = cigar_tuples[:len(cigar_tuples) - (idx + 1)] + [(2, length)]
+                        return rpos, qpos, trimmed_cigar
                 rpos -= 1
                 if rpos <= repflank_start:
                     trimmed_cigar = cigar_tuples[:len(cigar_tuples) - (idx + 1)] + [(2, length - (_ + 1))]
@@ -90,6 +109,10 @@ def _trim_downcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
 
         if op == 0:
             for _ in range(length):
+                if _ == 0:
+                    if rpos <= repflank_start:
+                        trimmed_cigar = cigar_tuples[:len(cigar_tuples) - (idx + 1)] + [(0, length)]
+                        return rpos, qpos, trimmed_cigar
                 rpos -= 1
                 qpos -= 1
                 if rpos <= repflank_start:
@@ -265,25 +288,74 @@ def _conf_uppos(cigar_tuples, rpos, qpos, length_threshold=30):
     return best_match_rpos, best_match_qpos, best_match_cigar
 
 
+def _collapse_matches(cigar, match_char='M'):
+    """
+    collapse matches within matches in CIGAR string
+
+    :param cigar: CIGAR string (e.g., "10M1I5M8M")
+    :param match_char: character to represent matches (e.g., 'M' or '=')
+
+    :return collapsed CIGAR string
+    """
+
+    length = ''
+    prev_op  = None
+
+    match_length = 0
+    new_cigar = ''
+
+    for c in cigar:
+        if c.isdigit():
+            length += c
+            continue
+        else:
+            if c == match_char:
+                match_length += int(length)
+            else:
+                if match_length > 0:
+                    new_cigar += f'{match_length}{match_char}'
+                    match_length = 0
+                new_cigar += f'{length}{c}'
+            length = ''
+    if match_length > 0:
+        new_cigar += f'{match_length}{match_char}'
+
+    return new_cigar
+
+
 def process_upstreamsa(cooper, ref, read, sa_read, sa_start, sa_end, sa_cigar, repeat_flank_start, repeat_flank_end):
     """
     Process the supplementary alignments of a read to check if any of them cover the locus of interest.
     """
 
-    assert _query_length(read.cigartuples) == _query_length(sa_read.cigartuples)
+    sa_startclip = 0
+    if sa_read.cigartuples[0][0] == 4 or sa_read.cigartuples[0][0] == 5:
+        sa_startclip = sa_read.cigartuples[0][1]
+    read_startclip = 0
+    if read.cigartuples[0][0] == 4 or read.cigartuples[0][0] == 5:
+        read_startclip = read.cigartuples[0][1]
+    if sa_startclip >= read_startclip: return False
+
+    end_softclip = 0
+    if read.cigartuples[-1][0] == 4:
+        end_softclip = read.cigartuples[-1][1]
+
+    if not _query_length(read.cigartuples) == _query_length(sa_read.cigartuples):
+        return False
+    if read.ref_end <= sa_read.ref_end: return False
+
     query_len = _query_length(read.cigartuples)
     query_seq = ""
     primary = "READ"
-    if len(sa_read.query_sequence) == query_len:
-        query_seq = sa_read.query_sequence
-        primary = "SA"
-    elif len(read.query_sequence) == query_len:
+    if len(read.query_sequence) == query_len and len(read.query_qualities) == query_len:
         query_seq = read.query_sequence
         primary = "READ"
+    elif len(sa_read.query_sequence) == query_len and len(sa_read.query_qualities) == query_len:
+        query_seq = sa_read.query_sequence
+        primary = "SA"
 
     if query_seq == "":
-        print(f"Query length mismatch between primary and supplementary alignment for read {read.query_name}.")
-        return
+        return False
 
     flank = 0
     pa_rpos, pa_qpos, pa_trimmed_cigar = _trim_upcigar(read.cigartuples, 0, read.ref_start, repeat_flank_start-flank, repeat_flank_end+flank)
@@ -294,14 +366,14 @@ def process_upstreamsa(cooper, ref, read, sa_read, sa_start, sa_end, sa_cigar, r
 
     sa_target = ref.fetch(cooper.chrom, sa_conf_rpos, pa_conf_rpos)
     sa_query  = query_seq[sa_conf_qpos:pa_conf_qpos]
+    if sa_conf_qpos >= pa_conf_qpos:
+        return False
 
     sa_cigarstring, score = align_sequences(sa_query, sa_target) # faster if the the query is shorter
+    joined_cigar = f'{sa_conf_qpos}S' + join_cigars(sa_cigarstring, _cigar_string(pa_conf_cigar))
 
-    if primary == "READ":
-        joined_cigar = f'{sa_conf_qpos}S' + join_cigars(sa_cigarstring, _cigar_string(pa_conf_cigar))
-    else:
-        joined_cigar = f'{sa_conf_qpos}S' + join_cigars(sa_cigarstring, _cigar_string(pa_conf_cigar))
-        read.query_sequence = query_seq
+    if primary != "READ":
+        read.query_sequence  = query_seq
         read.query_qualities = sa_read.query_qualities
         read.mod_bases       = sa_read.modified_bases
     if '=' not in read.cigarstring:
@@ -309,18 +381,21 @@ def process_upstreamsa(cooper, ref, read, sa_read, sa_start, sa_end, sa_cigar, r
     if 'X' not in read.cigarstring:
         joined_cigar = joined_cigar.replace('=', 'M').replace('X', 'M')
         match_char = 'M' if '=' not in read.cigarstring else '='
-        joined_cigar = _collapse_mismatches(joined_cigar, match_char)
+        joined_cigar = _collapse_matches(joined_cigar, match_char)
+
 
     read.cigarstring = joined_cigar
     read.cigartuples = _cigar_tuples(joined_cigar)
     read.ref_start   = sa_conf_rpos
     read.query_start = sa_conf_qpos
     if read.has_tag('MD'):
-        sa_mdtag = generate_md_tag(sa_cigarstring, sa_target, sa_query)
-        read.md_tag = join_mdtags(sa_mdtag, read.md_tag)
+        sa_mdtag    = generate_md_tag(sa_cigarstring, sa_target, sa_query)
+        qseq        = query_seq[pa_conf_qpos:-end_softclip] if end_softclip > 0 else query_seq[pa_conf_qpos:]
+        pa_mdtag    = generate_md_tag(_cigar_string(pa_conf_cigar), ref.fetch(cooper.chrom, pa_conf_rpos, read.ref_end), qseq)
+        read.md_tag = join_mdtags(sa_mdtag, pa_mdtag)
     if read.has_tag('cs'):
         sa_cstag = generate_cs_tag(sa_query, sa_target, sa_cigarstring)
         read.cs_tag = join_cstags(sa_cstag, read.cs_tag)
 
-    return
+    return True
     

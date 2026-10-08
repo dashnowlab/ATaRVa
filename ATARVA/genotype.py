@@ -61,7 +61,7 @@ def genotype_parser(subparsers):
     opt.add_argument('--snp-count',      metavar='<INT>',   type=int,   default=3,    help='number of SNPs for phasing [default: 3]')
     opt.add_argument('--snp-qual',       metavar='<INT>',   type=int,   default=20,   help='min base quality at SNP position [default: 20]')
     opt.add_argument('--snp-read',       metavar='<FLOAT>', type=float, default=0.2,  help='min SNP read fraction [default: 0.2]')
-    opt.add_argument('--phasing-read',   metavar='<FLOAT>', type=float, default=0.4,  help='min phased read cluster fraction [default: 0.4]')
+    opt.add_argument('--phasing-read',   metavar='<FLOAT>', type=float, default=0.6,  help='min phased read cluster fraction [default: 0.8]')
     opt.add_argument('--haplotag',       metavar='<STR>',               default=None, help='haplotag for phasing e.g. HP [default: None]')
 
     # Methylation

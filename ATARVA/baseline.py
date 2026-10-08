@@ -205,7 +205,7 @@ class Cooper:
 
         softclip_mode   = True
         if self.args.skip_softclip: softclip_mode = False
-        DROP_DISTANCE   = 100000 if softclip_mode else 0    # distance beyond which reads and loci are dropped from memory
+        DROP_DISTANCE   = 100000 #  if softclip_mode else 0    # distance beyond which reads and loci are dropped from memory
 
         with PysamWarningCapture(self.logfile):
             for raw_read in self.bam.fetch(chrom, region_start, region_end):
@@ -217,7 +217,7 @@ class Cooper:
 
                 start_softclip = end_softclip = 0
                 if read.cigartuples[0][0]  == 4 and softclip_mode: start_softclip = read.cigartuples[0][1]
-                if read.cigartuples[-1][0] == 4 and softclip_mode: end_softclip = read.cigartuples[-1][1]
+                if read.cigartuples[-1][0] == 4 and softclip_mode: end_softclip   = read.cigartuples[-1][1]
                 fetch_start = max(0, read.ref_start - start_softclip)
                 fetch_end   = min(read.ref_end + end_softclip, last_coords[1])
 
@@ -287,19 +287,38 @@ class Cooper:
 
                     # check if the locus is outside the read's reference boundaries check if it's in the softclipped region
                     softclip_result = None
-                    if locus_end + self.args.flank > read.ref_end:
+                    if locus_start - self.args.flank < read.ref_start:
                         if read.query_name in self.supp_reads:
                             for sa_read in self.supp_reads[read.query_name][0][:-1]:
                                 # Checking if any of the upstream supplementary alignments cover the locus with flanks
                                 sa_start, sa_end = sa_read.reference_start, sa_read.reference_end
                                 if sa_start <= locus_start - self.args.flank and locus_end + self.args.flank <= read.ref_end:
                                     # this processes the upstream supplementary alignment and stretches the read
-                                    process_upstreamsa(self, self.ref, read, sa_read, sa_start, sa_end, sa_read.cigartuples, locus_start - self.args.flank, locus_end + self.args.flank)
+                                    sa_update = process_upstreamsa(self, self.ref, read, sa_read, sa_start, sa_end, sa_read.cigartuples, locus_start - self.args.flank, locus_end + self.args.flank)
                                     self.supp_reads[read.query_name][0][-1] = read     # updating the read in the sa reads saved 
                                     if read.cigartuples[0][0] == 4 and softclip_mode:
                                         start_softclip = read.cigartuples[0][1]
                                     if read.cigartuples[-1][0] == 4 and softclip_mode:
                                         end_softclip = read.cigartuples[-1][1]
+                                    if sa_update:
+                                        del_softclip_idx = set()
+                                        for idx in range(len(softclip_loci['keys'])):
+                                            upstream = softclip_loci['coords'][idx]['upstream']
+                                            downstream = softclip_loci['coords'][idx]['downstream']
+                                            if upstream is not None:
+                                                if upstream[2] > start_softclip or upstream[3] > start_softclip:
+                                                    del_softclip_idx.add(idx)
+                                                if upstream[2] < end_softclip or upstream[3] < end_softclip:
+                                                    del_softclip_idx.add(idx)
+                                            if downstream is not None:
+                                                if downstream[2] > start_softclip or downstream[3] > start_softclip:
+                                                    del_softclip_idx.add(idx)
+                                                if downstream[2] < end_softclip or downstream[3] < end_softclip:
+                                                    del_softclip_idx.add(idx)
+                                        softclip_loci['keys'] = [key for idx, key in enumerate(softclip_loci['keys']) if idx not in del_softclip_idx]
+                                        softclip_loci['loci'] = [locus for idx, locus in enumerate(softclip_loci['loci']) if idx not in del_softclip_idx]
+                                        softclip_loci['coords'] = [coord for idx, coord in enumerate(softclip_loci['coords']) if idx not in del_softclip_idx]
+                                        softclip_loci['flags'] = [flag for idx, flag in enumerate(softclip_loci['flags']) if idx not in del_softclip_idx]
 
                     if softclip_mode and (locus_start - self.args.flank < read.ref_start or locus_end + self.args.flank > read.ref_end):
                         softclip_result = check_flank(self, read, locus_start, locus_end, start_softclip, end_softclip)
@@ -373,7 +392,6 @@ class Cooper:
                     read.loci_keys.remove(del_key)
                     del read.loci_data[del_key]
                 # Done filtering loci that failed the flank order check and updating the read's loci information accordingly
-
                 if not read.loci_coords: continue
 
                 read_required = True
@@ -698,7 +716,7 @@ class Cooper:
 
         # --- fetch neighbouring loci ---
         locus_data.neighbors = [
-            (int(r.split('\t')[1]), int(r.split('\t')[2]))
+            (int(r.split('\t')[1]), int(r.split('\t')[2]), r.split('\t')[3])
             for r in self.tbx.fetch(self.chrom, locus.start - self.args.flank, locus.end + self.args.flank)
         ]
 

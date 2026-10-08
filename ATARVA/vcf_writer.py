@@ -98,8 +98,8 @@ def write_fail_call(cooper, locus_key):
     optional_tag = f';ID={locus.name}' if locus.name else ';ID=.'
 
     INFO = 'AC=0;AN=0;MOTIF=' + str(locus.motif) + ';START=' + str(locus.start) + ';END=' + str(locus.end) + optional_tag + ';REFCN='+refcn
-    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:OL:FV'
-    SAMPLE = f'.:.:.:.:.:{depth}:.:.:.:.:.:.:.'
+    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:OL:FV:PS'
+    SAMPLE = f'.:.:.:.:.:{depth}:.:.:.:.:.:.:.:.:.'
 
     print(*[locus.chrom, locus.start + 1, '.',  cooper.ref.fetch(locus.chrom, locus.start, locus.end), '.', 0, FILTER, INFO, FORMAT, SAMPLE], file=cooper.outhandle, sep='\t')
 
@@ -315,7 +315,7 @@ def write_heterozygous_call(cooper, locus_key):
         num_snps  = locus_data.n_phasing_snps
         snp_quals = locus_data.phasing_snp_quals
     if snp_quals == '': snp_quals = '.'
-    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:OL:FV'
+    FORMAT = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:OL:FV:PS'
     FV = '1' if locus_data.flank_var else '0'
     OL = ''
     for uclust in locus_data.gt_ucluster:

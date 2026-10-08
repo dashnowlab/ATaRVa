@@ -126,7 +126,7 @@ def parse_cigar(cooper, read):
 
             qpos += insert_len
             repeat_index += B_jump(read, rpos, qpos, insert_len, homopolymer_insert, repeat_index, locus_query_range, flank_query_range,
-                                           locus_reached, locus_boundary_crossed, left_flank_insertions, right_flank_insertions)
+                                   locus_reached, locus_boundary_crossed, left_flank_insertions, right_flank_insertions)
         
         elif cigar[0] == 0: # match (includes substitutions)
             match_len = cigar[1]

@@ -169,6 +169,9 @@ def merge_snpreadsets(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
             sig_snps.extend(sorted(neighbours, key=lambda p: neighbours[p]))
             break
 
+    if cooper.args.amplicon and len(sig_snps) < 3:
+        return -1
+
     # fallback — pick position with lowest sum of two best scores
     if not sig_snps:
         best_pos = min(
@@ -209,6 +212,12 @@ def merge_snpreadsets(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
 
     # --- validate phasing coverage ---
     total_phased = len(cluster1) + len(cluster2)
+
+    if cooper.args.amplicon and (locus_data.depth - total_phased > 10 or total_phased < 0.9 * locus_data.depth):
+        locus_data.is_genotyped    = False
+        locus_data.skip_code     = 1
+        return min_snp_pos
+
     if total_phased >= cooper.args.phasing_read * locus_data.depth:
         locus_data.hap_read_sets      = (list(cluster1), list(cluster2))
         locus_data.hap_alen_sets      = ([locus_data.read_alens[ridx][0] for ridx in cluster1], [locus_data.read_alens[ridx][0] for ridx in cluster2])
@@ -277,6 +286,8 @@ def qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps):
         ordered_sig_snps.remove(pos)
 
     if not ordered_sig_snps: return -1
+
+    if cooper.args.amplicon and len(ordered_sig_snps) < 3: return -1
 
     if len(ordered_sig_snps) == 1:
         max_alt_cov = max(len(reads) for reads in sig_snp_data[ordered_sig_snps[0]]['alleles'].values())
@@ -366,6 +377,11 @@ def qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps):
             if   score_a1 < score_a2: cluster2.add(read_a)
             elif score_a1 > score_a2: cluster1.add(read_a)
             phased_reads.add(read_a)
+
+    if cooper.args.amplicon and (locus_data.depth - total_phased > 10 or total_phased < 0.9 * locus_data.depth):
+        locus_data.is_genotyped    = False
+        locus_data.skip_code     = 1
+        return min_snp_pos
 
     # --- validate phasing coverage ---
     total_phased = len(cluster1) + len(cluster2)

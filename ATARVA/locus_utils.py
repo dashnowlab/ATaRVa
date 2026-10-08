@@ -124,7 +124,40 @@ def subset_reads(cooper, locus_data):
     locus_data.depth          = len(read_indices)
 
 
-def process_flank_insertions(flank_insertions, ref_allele, ref_length, query, locus, locus_neighbors, insert_positions, is_left):
+def _check_insertion_fit(cooper, ins_neighbors, insert, locus):
+    """
+    check if the insertion fits in the reference context
+
+    :param cooper: ATaRVa object
+    :param ins_neighbors: list of neighboring loci coordinates for the insertion
+    :param insert: inserted sequence
+    :return: True if the insertion fits, False otherwise
+    """
+
+    max_match_locus = None
+    max_match_score = 0
+    for neighbor in ins_neighbors:
+        n_chrom, n_start, n_end, n_motif = neighbor
+        ref_seq = cooper.ref.fetch(n_chrom, n_start, n_end)
+        target  = ""
+        while len(target) < len(insert): target += ref_seq
+        alignment_score, _align_score, target_begin, target_end, query_begin, query_end, sCigar = stripSW(Inputs(target, insert), False)
+        
+        if query_end - query_begin <= round(0.2 * len(insert)): continue
+        if alignment_score > max_match_score:
+            max_match_score = alignment_score
+            max_match_locus = neighbor
+
+    if max_match_locus is None:
+        return False
+
+    if max_match_locus == (locus.chrom, locus.start, locus.end, locus.motif):
+        return True
+    else:
+        return False
+
+
+def process_flank_insertions(cooper, flank_insertions, ref_allele, ref_length, query, locus, locus_neighbors, insert_positions, is_left):
     """
     process insertions in flanks and adjusts locus boundaries if needed
 
@@ -152,6 +185,11 @@ def process_flank_insertions(flank_insertions, ref_allele, ref_length, query, lo
         if ins_rpos in insert_positions:                  continue  # if the insertion position is already recorded for another locus, skip
         if inrepeat_ins(locus_neighbors, ins_rpos, insert_positions): continue
 
+        ins_neighbors = [
+            (r.split('\t')[0], int(r.split('\t')[1]), int(r.split('\t')[2]), r.split('\t')[3])
+            for r in cooper.tbx.fetch(locus.chrom, ins_rpos - cooper.args.flank, ins_rpos + cooper.args.flank)
+        ]
+
         insert          = query[ins_qs:ins_qe]
         if insert == "": continue
         alignment, coords = stripSW(Inputs(ref_allele, insert), True)
@@ -159,23 +197,12 @@ def process_flank_insertions(flank_insertions, ref_allele, ref_length, query, lo
         matches         = alignment.count('|')
         min_len         = min(ins_len, ref_length)
 
-        if align_len <= round(0.2 * min_len): continue
-
-        if align_len >= ref_75 and matches >= round(0.75 * align_len):
+        check_insfit = _check_insertion_fit(cooper, ins_neighbors, insert, locus)
+        
+        if check_insfit:
             ILR  += 1
             adj_pos = ins_qs if is_left else ins_qe
             included_insertions.add(ins_rpos)
-
-        elif (matches   >= round(0.75 * align_len) and
-              align_len >= round(0.45 * ins_len)):
-            PI += 1 if align_len <= 0.5 * ins_len else 0
-            CI += 1 if align_len >  0.5 * ins_len else 0
-            if is_left and coords[1] >= round(0.7 * ins_len):
-                adj_pos = ins_qs + coords[0]
-                included_insertions.add(ins_rpos)
-            elif not is_left and coords[0] <= round(0.3 * ins_len):
-                adj_pos = ins_qs + coords[1]
-                included_insertions.add(ins_rpos)
     
     return adj_pos, included_insertions, ILR, PI, CI
 
@@ -222,7 +249,7 @@ def process_locus(cooper, locus_key):
 
     ref_allele = cooper.ref.fetch(cooper.chrom, locus.start, locus.end)
     ref_length = locus.length
-    locus_data.neighbors.remove((locus.start, locus.end))
+    locus_data.neighbors.remove((locus.start, locus.end, locus.motif))
 
     read_indices      = locus_data.reads
 
@@ -256,10 +283,10 @@ def process_locus(cooper, locus_key):
         right_ins.sort(key=lambda x: x[0], reverse=True)
 
         # process flanks
-        new_qs, pend_l, ilr, pi, ci    = process_flank_insertions(left_ins,  ref_allele, ref_length, query, locus,
-                                                                  locus_data.neighbors, cooper.cooper_insert_positions[read_index], is_left=True)
-        new_qe, pend_r, ilr2, pi2, ci2 = process_flank_insertions(right_ins, ref_allele, ref_length, query, locus,
-                                                                  locus_data.neighbors, cooper.cooper_insert_positions[read_index], is_left=False)
+        new_qs, pend_l, ilr, pi, ci    = process_flank_insertions(cooper, left_ins,  ref_allele, ref_length, query, locus, locus_data.neighbors,
+                                                                  cooper.cooper_insert_positions[read_index], is_left=True)
+        new_qe, pend_r, ilr2, pi2, ci2 = process_flank_insertions(cooper, right_ins, ref_allele, ref_length, query, locus, locus_data.neighbors,
+                                                                  cooper.cooper_insert_positions[read_index], is_left=False)
 
         if cooper.args.strict:
             if len(pend_l) > 0 or len(pend_r) > 0:
