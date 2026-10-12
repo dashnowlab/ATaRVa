@@ -102,7 +102,7 @@ _BioRxiv_, **doi:** https://doi.org/10.1101/2025.05.13.653434
 ## Contact
 For queries or suggestions, please contact:
 
-Divya Tej Sowpati - tej at csirccmb dot org
-Abishek Kumar S - abishekks at csirccmb dot org
-Harriet Dashnow - harriet dot dashnow at cuanschutz dot edu
+Divya Tej Sowpati - tej at csirccmb dot org <br>
+Abishek Kumar S - abishekks at csirccmb dot org <br>
+Harriet Dashnow - harriet dot dashnow at cuanschutz dot edu <br>
 Akshay Kumar Avvaru - akshaykumar dot avvaru at cuanschutz dot edu
