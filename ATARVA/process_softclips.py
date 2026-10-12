@@ -773,7 +773,7 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
     THRESHOLD    = 0.8  # 80% MATCHES THRESHOLD
 
     # contains reference and read coordinates of upstream and downstream flanks of a locus; initialized to None
-    result = {'upstream': None, 'downstream': None}  
+    result = {'upstream': None, 'downstream': None}
 
     # looking for the upstream flank for loci that could be in upstream softclip
     if locus_start - MINFLANK < read.ref_start and up_softclip > MINFLANK:

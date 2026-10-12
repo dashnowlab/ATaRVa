@@ -100,10 +100,9 @@ class LocusVariation:
     read_methylation:  dict  = field(default_factory=dict)  # read index -> (total methylation probability, methylation positions, methylation scores, methylation calls(0 or 1))
     halen_frequency:   dict  = field(default_factory=dict)  # allele length -> count dict for the reads supporting the locus
     alen_frequency:    dict  = field(default_factory=dict)  # allele length ignoring indels in homopolymers
-    allele_lengths:    list  = field(default_factory=list)  # list of allele lengths for the reads supporting the locus
-    min_read_qual:     float = float('inf')                            # minimum read quality among the reads supporting the locus
-    min_qual_read:     int   = None          # index of the read with minimum read quality among the reads supporting the locus
-    flank_var:         bool  = False         # whether the locus has variants in the flanking region
+    min_read_qual:     float = float('inf')                 # minimum read quality among the reads supporting the locus
+    min_qual_read:     int   = None                         # index of the read with minimum read quality among the reads supporting the locus
+    flank_var:         bool  = False                        # whether the locus has variants in the flanking region
 
     neighbors:        set   = field(default_factory=set)    # positions of neighbouring loci with shared reads
 
@@ -197,11 +196,11 @@ class ExtendedRead(pysam.AlignedSegment):
         ext.methyl_end             = 0
         ext.methylation_calls      = []     # list of tuples (position, probability) for methylation calls in the read
 
+        ext.sa_chroms              = []
         ext.sa_starts              = []
         ext.sa_ends                = []
-        ext.sa_lengths             = []
-        ext.sa_chroms              = []
         ext.sa_strands             = []
+        ext.sa_lengths             = []
         ext.sa_cigars              = []
         ext.sa_mapqs               = []
         ext.sa_nms                 = []

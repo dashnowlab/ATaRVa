@@ -327,7 +327,7 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, pidx, threads):
 
                 df = pl.DataFrame(vcf_data, schema_overrides=schema).lazy()
                 df = df.unique(subset=['C', 'S', 'E'], keep='first', maintain_order=True)
-                base_frame = df.collect().select(['S', 'E']).lazy()
+                base_frame = df.collect().select(['C', 'S', 'E']).lazy()
 
                 frames.append(df)
                 del df

@@ -201,7 +201,7 @@ def length_genotyper(cooper, locus_key):
     read_alens = locus_data.read_alens
 
     read_indices    = sorted(locus_data.reads)
-    unique_alens    = set(locus_data.allele_lengths)
+    unique_alens    = set([l[0] for l in read_alens.values()])
     singleton_alens = {alen for alen, count in locus_data.halen_frequency.items() if count == 1}
 
     # --- pre-compute 10% windows for each unique allele ---
@@ -272,7 +272,7 @@ def length_genotyper_gmm(cooper, locus_key):
     read_alens = locus_data.read_alens
 
     read_indices    = sorted(locus_data.reads)
-    unique_alens    = set(locus_data.allele_lengths)
+    unique_alens    = set([l[0] for l in read_alens.values()])
     singleton_alens = {alen for alen, count in locus_data.halen_frequency.items() if count == 1}
     windows         = {i: (round(i * (1 - WINDOW_FRAC)), round(i * (1 + WINDOW_FRAC)))
                        for i in unique_alens}
@@ -462,7 +462,7 @@ def length_genotyper_hdbscan(cooper, locus_key):
     read_alens = locus_data.read_alens
 
     read_indices    = sorted(locus_data.reads)
-    unique_alens    = set(locus_data.allele_lengths)
+    unique_alens    = set([l[0] for l in read_alens.values()])
     singleton_alens = {alen for alen, count in locus_data.halen_frequency.items() if count == 1}
     windows         = {i: (round(i * (1 - WINDOW_FRAC)), round(i * (1 + WINDOW_FRAC)))
                        for i in unique_alens}
@@ -560,7 +560,7 @@ def length_genotyper_histogram(cooper, locus_key):
     read_alens = locus_data.read_alens
 
     read_indices    = sorted(locus_data.reads)
-    unique_alens    = set(locus_data.allele_lengths)
+    unique_alens    = set([l[0] for l in read_alens.values()])
     singleton_alens = {alen for alen, count in locus_data.halen_frequency.items() if count == 1}
     windows         = {i: (round(i * (1 - WINDOW_FRAC)), round(i * (1 + WINDOW_FRAC)))
                        for i in unique_alens}
@@ -714,7 +714,7 @@ def length_genotyper_kde(cooper, locus_key):
     read_alens = locus_data.read_alens
 
     read_indices    = sorted(locus_data.reads)
-    unique_alens    = set(locus_data.allele_lengths)
+    unique_alens    = set([l[0] for l in read_alens.values()])
     singleton_alens = {alen for alen, count in locus_data.halen_frequency.items() if count == 1}
     windows         = {i: (round(i * (1 - WINDOW_FRAC)), round(i * (1 + WINDOW_FRAC)))
                         for i in unique_alens}

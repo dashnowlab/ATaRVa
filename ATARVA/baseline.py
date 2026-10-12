@@ -99,7 +99,6 @@ class Cooper:
         self.karyotype  = args.karyotype[sample_idx]
         self.chrom      = None
         self.haploid    = False
-        self.somatic    = False
         self.logger     = None
         self.supp_reads = {}
 
@@ -287,7 +286,7 @@ class Cooper:
 
                     # check if the locus is outside the read's reference boundaries check if it's in the softclipped region
                     softclip_result = None
-                    if locus_start - self.args.flank < read.ref_start:
+                    if softclip_mode and locus_start - self.args.flank < read.ref_start:
                         if read.query_name in self.supp_reads:
                             for sa_read in self.supp_reads[read.query_name][0][:-1]:
                                 # Checking if any of the upstream supplementary alignments cover the locus with flanks
@@ -349,11 +348,11 @@ class Cooper:
                     read.loci_data[locus_key] = ReadLocusInfo(halen=0, alen=0, rlen=locus_len, seq=[])
 
                     if locus_key not in self.cooper_loci_data:
-                        self.cooper_loci_data[locus_key] = LocusVariation()
                         self.cooper_loci_info[locus_key] = LocusInfo(chrom=chrom, start=locus_start, end=locus_end,
                                                                      motif=fields[3], name=locus_name)
-                        self.cooper_loci_ends.append(locus_end)
+                        self.cooper_loci_data[locus_key] = LocusVariation()
                         self.cooper_loci_keys.append(locus_key)
+                        self.cooper_loci_ends.append(locus_end)
 
                 if softclip_mode and softclip_loci['coords']:
                     merged_coords = []

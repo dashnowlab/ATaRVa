@@ -2,7 +2,7 @@ import bisect
 
 from ATARVA.realignment import stripSW, Inputs
 from ATARVA.vcf_writer  import write_fail_call
-
+from ATARVA.process_softclips import cigar_stats
 
 def break_locuskey(locus_key):
     """
@@ -32,7 +32,6 @@ def count_alleles(cooper, locus_key):
     read_indices = locus_data.reads
     for read_index in read_indices:
         halen, alen = locus_data.read_alens[read_index]
-        locus_data.allele_lengths.append(halen)
 
         try: locus_data.alen_frequency[alen] += 1
         except KeyError: locus_data.alen_frequency[alen] = 1
@@ -142,8 +141,11 @@ def _check_insertion_fit(cooper, ins_neighbors, insert, locus):
         target  = ""
         while len(target) < len(insert): target += ref_seq
         alignment_score, _align_score, target_begin, target_end, query_begin, query_end, sCigar = stripSW(Inputs(target, insert), False)
-        
-        if query_end - query_begin <= round(0.2 * len(insert)): continue
+        matches, _ = cigar_stats(sCigar, False)
+
+        if query_end - query_begin <= round(0.2 * len(insert)) or \
+           matches / (query_end - query_begin) < 0.7:
+            continue
         if alignment_score > max_match_score:
             max_match_score = alignment_score
             max_match_locus = neighbor
@@ -185,20 +187,15 @@ def process_flank_insertions(cooper, flank_insertions, ref_allele, ref_length, q
         if ins_rpos in insert_positions:                  continue  # if the insertion position is already recorded for another locus, skip
         if inrepeat_ins(locus_neighbors, ins_rpos, insert_positions): continue
 
+        insert = query[ins_qs:ins_qe]
+        if insert == "": continue
+
         ins_neighbors = [
             (r.split('\t')[0], int(r.split('\t')[1]), int(r.split('\t')[2]), r.split('\t')[3])
             for r in cooper.tbx.fetch(locus.chrom, ins_rpos - cooper.args.flank, ins_rpos + cooper.args.flank)
         ]
 
-        insert          = query[ins_qs:ins_qe]
-        if insert == "": continue
-        alignment, coords = stripSW(Inputs(ref_allele, insert), True)
-        align_len       = len(alignment)
-        matches         = alignment.count('|')
-        min_len         = min(ins_len, ref_length)
-
-        check_insfit = _check_insertion_fit(cooper, ins_neighbors, insert, locus)
-        
+        check_insfit = _check_insertion_fit(cooper, ins_neighbors, insert, locus)    
         if check_insfit:
             ILR  += 1
             adj_pos = ins_qs if is_left else ins_qe

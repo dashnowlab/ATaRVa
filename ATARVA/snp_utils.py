@@ -9,10 +9,6 @@ def haplocluster_reads(cooper, locus_key):
     :return:            minimum SNP position used for clustering, or -1 if clustering fails
     """
 
-    MIN_ALLELE_FRAC       = 0.2    # min fraction for allele quality calculation
-    THRESHOLD_RANGES      = [(0.3, 0.7), (0.25, 0.75), (0.2, 0.8)]
-    MIN_SNP_COVERAGE_FRAC = 0.6    # min fraction of reads a SNP must cover
-
     locus = cooper.cooper_loci_info[locus_key]
     locus_data = cooper.cooper_loci_data[locus_key]
     locus_cov  = locus_data.depth
@@ -75,7 +71,9 @@ def haplocluster_reads(cooper, locus_key):
         ordered_sig_snps.append(pos)
         sig_snp_data[pos] = { 'cov': snp_data['cov'], 'alleles': snp_data['alleles'], 'qual': snp_data['qual'] }
 
-    min_snp_pos      = qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
+    min_snp_pos       = qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
+
+    THRESHOLD_RANGES  = [(0.3, 0.7), (0.25, 0.75), (0.2, 0.8)]
     if not locus_data.is_genotyped:
         for tier_idx, (lower_thresh, upper_thresh) in enumerate(THRESHOLD_RANGES):
 
