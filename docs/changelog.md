@@ -1,4 +1,30 @@
 ## Changelog
+
+### v0.9.2
+* Changed `--phasing-read` to `--phased-frac` to specify the minimum fraction of phased reads required for haplotyping. The default value is set to 0.6.
+* Changed `--snp-read` to `--cluster-frac` to specify the minimum fraction of reads required for clustering. The default value is set to 0.2.
+* Removed processing of softclipped and supplementary alignments as defaul. Users can enable this feature using the `--use-softclip` option.
+* Included the processing of supplementary alignments along with softclipped portions of the reads.
+* Reintroduced `--locus-wise` and `--amplicon` options for genotyping mode selection.
+* Debugged the merge functionality.
+
+### v0.9.1
+* Includes a `--strict` mode to ignore the variants in the flank and flag a locus with flanking variations using FV.
+* Inlcuded a option to skip using softclipped portions of the reads for genotyping using `--skip-softclip` option.
+* Include phase set number for haplotagged BAMs
+
+### v0.7.1+ext0.01
+* Reports PS (phase set) in the VCF for haplotagged BAM inputs.
+* Fixed - Report SQ value as '.' for loci with no informative SNPs.
+
+### v0.7.1+ext
+* First release. Extended version of ATaRVa with additional features as below.
+* Default processing of the softclipped portions of the read to search for the presence of repeat loci from the catalogs by searching for the flanking sequences.
+* Implements a slightly different version of read-haplogrouping based on the informative SNPs. The reads are heirarchically grouped based on the minimising the Qvalue penalty of the informative SNPs.
+* Added a new option --rna to enable genotyping of tandem repeats from RNA-seq data. This option is designed parse the CIGAR string of the typicaly RNA-seq alignment which include introns and other splicing events encoded as N.
+* Added a new option --instability which outputs an additional file with allele information from each read at a locus
+* Changed `--format` to `--aln-format` to specify the input format for alignment file.
+
 ### v0.7.1
 * Fixed NumPy version dependency issues across Python versions
 * Updated the KDE clustering score calculation formula by incorporating a skewness-based parameter
