@@ -202,8 +202,8 @@ class Cooper:
         read_index      = 0
         NONREP_FLANK    = 30        # Minimum non-repetitive flank considered for locus processing from softclip region
 
-        softclip_mode   = True
-        if self.args.skip_softclip: softclip_mode = False
+        softclip_mode   = False
+        if self.args.use_softclip: softclip_mode = True
         DROP_DISTANCE   = 100000 #  if softclip_mode else 0    # distance beyond which reads and loci are dropped from memory
 
         with PysamWarningCapture(self.logfile):

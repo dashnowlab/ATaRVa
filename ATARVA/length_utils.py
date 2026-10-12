@@ -49,26 +49,30 @@ def _assign_genotype(cooper, locus_key, locus_data, c1_idx, c2_idx, c1_lengths,
     c1_valid = bool(c1_idx) and len(c1_idx) >= min_cluster_size
     c2_valid = bool(c2_idx) and len(c2_idx) >= min_cluster_size
 
-    if c1_valid and c2_valid:
-        locus_data.hap_read_sets = hap_read_sets
-        locus_data.hap_alen_sets = (c1_lengths, c2_lengths)
-        locus_data.is_genotyped = True
-        heterozygous_call(cooper, locus_key)
-        return
+    if len (c1_idx) + len(c2_idx) >= cooper.args.phased_frac * locus_data.depth \
+        and len(c1_idx) >= cooper.args.cluster_frac * locus_data.depth \
+        and len(c2_idx) >= cooper.args.cluster_frac * locus_data.depth:
 
-    if c1_valid:
-        locus_data.hap_read_sets = (hap_read_sets[0], hap_read_sets[0])
-        locus_data.hap_alen_sets = (c1_lengths, c1_lengths)
-        locus_data.is_genotyped = True
-        homozygous_call(cooper, locus_key)
-        return
+        if c1_valid and c2_valid:
+            locus_data.hap_read_sets = hap_read_sets
+            locus_data.hap_alen_sets = (c1_lengths, c2_lengths)
+            locus_data.is_genotyped = True
+            heterozygous_call(cooper, locus_key)
+            return
 
-    if c2_valid:
-        locus_data.hap_read_sets = (hap_read_sets[1], hap_read_sets[1])
-        locus_data.hap_alen_sets = (c2_lengths, c2_lengths)
-        locus_data.is_genotyped = True
-        homozygous_call(cooper, locus_key)
-        return
+        if c1_valid:
+            locus_data.hap_read_sets = (hap_read_sets[0], hap_read_sets[0])
+            locus_data.hap_alen_sets = (c1_lengths, c1_lengths)
+            locus_data.is_genotyped = True
+            homozygous_call(cooper, locus_key)
+            return
+
+        if c2_valid:
+            locus_data.hap_read_sets = (hap_read_sets[1], hap_read_sets[1])
+            locus_data.hap_alen_sets = (c2_lengths, c2_lengths)
+            locus_data.is_genotyped = True
+            homozygous_call(cooper, locus_key)
+            return
 
     locus_data.hap_read_sets = (locus_data.reads, [])
     locus_data.hap_alen_sets = ([locus_data.read_alens[rid][0] for rid in locus_data.read_alens], [])
@@ -454,7 +458,7 @@ def length_genotyper_hdbscan(cooper, locus_key):
     """
 
     MIN_READS        = 3
-    MIN_CLUSTER_FRAC = 0.2
+    MIN_CLUSTER_FRAC = cooper.args.cluster_frac
     WINDOW_FRAC      = 0.1
 
     locus_data = cooper.cooper_loci_data[locus_key]

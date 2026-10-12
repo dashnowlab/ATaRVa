@@ -46,12 +46,12 @@ def genotype_parser(subparsers):
     # Input / Output
     opt.add_argument('-o', '--vcf',      metavar='<FILE>', default='',    help='output VCF file [default: stdout]')
     opt.add_argument('--aln-format',     metavar='<STR>',  default='bam', help='alignment format [cram | bam | sam] [default: bam]')
-    opt.add_argument('--skip-softclip',  action='store_true', help='skip softclip processing [default: False]')
-    opt.add_argument('--contigs',        metavar='<STR>',  nargs='+', help='contigs to genotype e.g. chr1 chr12 [default: all]')
+    opt.add_argument('--use-softclip',  action='store_true', help='use softclip information [default: False]')
+    opt.add_argument('--contigs',        nargs='+',          help='contigs to genotype e.g. chr1 chr12 [default: all]')
     opt.add_argument('--karyotype',      metavar='<STR>',  nargs='+', help='sample karyotypes e.g. XY XX')
 
     # Read filtering
-    opt.add_argument('-q', '--map-qual', metavar='<INT>',   type=int,   default=5,    help='minimum mapping quality [default: 5]')
+    opt.add_argument('--map-qual',       metavar='<INT>',   type=int,   default=5,    help='minimum mapping quality [default: 5]')
     opt.add_argument('--min-reads',      metavar='<INT>',   type=int,   default=10,   help='minimum read coverage at a locus [default: 10]')
     opt.add_argument('--max-reads',      metavar='<INT>',   type=int,   default=None, help='maximum reads per locus [default: 100]')
     opt.add_argument('--flank',          metavar='<INT>',   type=int,   default=None, help='flank length (bp) to search for insertions [default: 10]')
@@ -60,8 +60,8 @@ def genotype_parser(subparsers):
     opt.add_argument('--snp-dist',       metavar='<INT>',   type=int,   default=3000, help='max SNP distance from repeat [default: 3000]')
     opt.add_argument('--snp-count',      metavar='<INT>',   type=int,   default=3,    help='number of SNPs for phasing [default: 3]')
     opt.add_argument('--snp-qual',       metavar='<INT>',   type=int,   default=20,   help='min base quality at SNP position [default: 20]')
-    opt.add_argument('--snp-read',       metavar='<FLOAT>', type=float, default=0.2,  help='min SNP read fraction [default: 0.2]')
-    opt.add_argument('--phasing-read',   metavar='<FLOAT>', type=float, default=0.6,  help='min phased read cluster fraction [default: 0.8]')
+    opt.add_argument('--phased-frac',    metavar='<FLOAT>', type=float, default=0.6,  help='min fraction  of total spanning reads that are phased [default: 0.6]')
+    opt.add_argument('--cluster-frac',   metavar='<FLOAT>', type=float, default=0.2,  help='min fraction  of total spanning reads that are phased to one cliuster [default: 0.2]')
     opt.add_argument('--haplotag',       metavar='<STR>',               default=None, help='haplotag for phasing e.g. HP [default: None]')
 
     # Methylation
@@ -72,7 +72,7 @@ def genotype_parser(subparsers):
     opt.add_argument('--locus-wise',     action='store_true', help='read-wise genotyping for dense BED regions')
     opt.add_argument('--decompose',      action='store_true', help='write motif-decomposed sequence to VCF')
     opt.add_argument('--amplicon',       action='store_true', help="genotype mode for target-amplified high depth sequencing of pathogenic regions. This mode"
-                                                                   " first uses KDE clustering for genotyping [default: False]")
+                                                                   " first uses KDE modeling for genotyping [default: False]")
     opt.add_argument('--strict',         action='store_true', help="strict mode: stick to the coordinates in the reference catalog. If flank is greater than 0"
                                                                    " and there are indels in the flanking regions, the locus is flagged for format FV as 1. [Default: False]")
 
