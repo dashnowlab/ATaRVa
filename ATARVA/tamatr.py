@@ -190,7 +190,7 @@ def blending(process_df, outfile, pidx, tidx, nsamples):
         id      = '.'
         q       = '.'
         alt     = ','.join(ALTs) if ALTs else '.'
-        format  = 'GT:AL:CN:LPM:AR:SD:DP:SN:SQ:MA:MR:DS:MV'
+        format = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV:OL:FV:PS'
 
         repeat_info = [chrom, start, id, ref_seq, alt, q, filter, info, format, *sample_formats]
         del sample_formats
@@ -327,7 +327,7 @@ def chop_tamatar(outfile, bedfile, ref_file, vcf_files, contigs, pidx, threads):
 
                 df = pl.DataFrame(vcf_data, schema_overrides=schema).lazy()
                 df = df.unique(subset=['C', 'S', 'E'], keep='first', maintain_order=True)
-                base_frame = df.collect().select(['S', 'E']).lazy()
+                base_frame = df.collect().select(['C', 'S', 'E']).lazy()
 
                 frames.append(df)
                 del df

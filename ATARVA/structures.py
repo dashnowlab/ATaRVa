@@ -91,7 +91,7 @@ class ReadInfo:
 @dataclass(slots=True)
 class LocusVariation:
     reads:             list  = field(default_factory=list)  # list of all informative read indices for the locus
-    read_names:        list  = field(default_factory=list)  # list of all informative read names for the locus
+    read_names:        dict  = field(default_factory=dict)  # list of all informative read names for the locus
     read_haplotags:    dict  = field(default_factory=dict)  # the haplotag assigned to each read in reads
     read_haplotag_ps:  dict  = field(default_factory=dict)  # the phase set assigned to each read in reads
     depth:             int   = 0                            # depth of the locus, updated when reads are subset for high coverage loci  
@@ -100,10 +100,9 @@ class LocusVariation:
     read_methylation:  dict  = field(default_factory=dict)  # read index -> (total methylation probability, methylation positions, methylation scores, methylation calls(0 or 1))
     halen_frequency:   dict  = field(default_factory=dict)  # allele length -> count dict for the reads supporting the locus
     alen_frequency:    dict  = field(default_factory=dict)  # allele length ignoring indels in homopolymers
-    allele_lengths:    list  = field(default_factory=list)  # list of allele lengths for the reads supporting the locus
-    min_read_qual:     float = float('inf')                            # minimum read quality among the reads supporting the locus
-    min_qual_read:     int   = None          # index of the read with minimum read quality among the reads supporting the locus
-    flank_var:         bool  = False         # whether the locus has variants in the flanking region
+    min_read_qual:     float = float('inf')                 # minimum read quality among the reads supporting the locus
+    min_qual_read:     int   = None                         # index of the read with minimum read quality among the reads supporting the locus
+    flank_var:         bool  = False                        # whether the locus has variants in the flanking region
 
     neighbors:        set   = field(default_factory=set)    # positions of neighbouring loci with shared reads
 
@@ -122,6 +121,7 @@ class LocusVariation:
     gt_aseqs:          tuple = (None, None)   # (allele1, allele2) allele sequences for the genotype call
     gt_alens:          tuple = (None, None)   # (alen1, alen2) allele lengths for the genotype call
     gt_arange:         tuple = (None, None)   # allele length range for the genotype call, in the format 'lower1-upper1,lower2-upper2'
+    gt_ucluster:       tuple = (None, None, None)   # allele length range for the genotype call, in the format 'lower1-upper1,lower2-upper2'
     gt_decomp_seqs:    tuple = (None, None)   # (decomposed allele1, decomposed allele2) motif decomposition of the allele sequences
     is_phased:         bool  = False          # whether haplotagging was successful
     skip_code:         int   = 10             # whether genotyping failed for the locus
@@ -169,6 +169,10 @@ class ExtendedRead(pysam.AlignedSegment):
             ext.cs_tag            = read.get_tag('cs')
         if read.has_tag('MD'):
             ext.md_tag            = read.get_tag('MD')
+        if read.modified_bases:
+            ext.mod_bases         = read.modified_bases
+        else:
+            ext.mod_bases         = None
 
         # custom attributes
         ext.index                  = None
@@ -192,11 +196,11 @@ class ExtendedRead(pysam.AlignedSegment):
         ext.methyl_end             = 0
         ext.methylation_calls      = []     # list of tuples (position, probability) for methylation calls in the read
 
+        ext.sa_chroms              = []
         ext.sa_starts              = []
         ext.sa_ends                = []
-        ext.sa_lengths             = []
-        ext.sa_chroms              = []
         ext.sa_strands             = []
+        ext.sa_lengths             = []
         ext.sa_cigars              = []
         ext.sa_mapqs               = []
         ext.sa_nms                 = []

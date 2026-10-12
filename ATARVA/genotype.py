@@ -61,7 +61,7 @@ def genotype_parser(subparsers):
     opt.add_argument('--snp-count',      metavar='<INT>',   type=int,   default=3,    help='number of SNPs for phasing [default: 3]')
     opt.add_argument('--snp-qual',       metavar='<INT>',   type=int,   default=20,   help='min base quality at SNP position [default: 20]')
     opt.add_argument('--snp-read',       metavar='<FLOAT>', type=float, default=0.2,  help='min SNP read fraction [default: 0.2]')
-    opt.add_argument('--phasing-read',   metavar='<FLOAT>', type=float, default=0.4,  help='min phased read cluster fraction [default: 0.4]')
+    opt.add_argument('--phasing-read',   metavar='<FLOAT>', type=float, default=0.6,  help='min phased read cluster fraction [default: 0.8]')
     opt.add_argument('--haplotag',       metavar='<STR>',               default=None, help='haplotag for phasing e.g. HP [default: None]')
 
     # Methylation
@@ -69,7 +69,7 @@ def genotype_parser(subparsers):
     opt.add_argument('--methviz',        action='store_true', help='write methylation-encoded sequence to VCF [default: False]')
 
     # Modes
-    # opt.add_argument('--read-wise',      action='store_true', help='read-wise genotyping for dense BED regions')
+    opt.add_argument('--locus-wise',     action='store_true', help='read-wise genotyping for dense BED regions')
     opt.add_argument('--decompose',      action='store_true', help='write motif-decomposed sequence to VCF')
     opt.add_argument('--amplicon',       action='store_true', help="genotype mode for target-amplified high depth sequencing of pathogenic regions. This mode"
                                                                    " first uses KDE clustering for genotyping [default: False]")
@@ -280,9 +280,8 @@ def genotype_run(args) -> None:
             all_success = True
             errors      = []
 
-            with tqdm(total=args.threads, desc='Processing',
-                    ascii='_>', ncols=75,
-                    bar_format='{l_bar}{bar}{n_fmt}/{total_fmt}') as pbar:
+            with tqdm(total=args.threads, desc='Processing', ascii='_>', ncols=75,
+                      bar_format='{l_bar}{bar}{n_fmt}/{total_fmt}') as pbar:
 
                 def on_success(_): pbar.update()
 

@@ -9,10 +9,6 @@ def haplocluster_reads(cooper, locus_key):
     :return:            minimum SNP position used for clustering, or -1 if clustering fails
     """
 
-    MIN_ALLELE_FRAC       = 0.2    # min fraction for allele quality calculation
-    THRESHOLD_RANGES      = [(0.3, 0.7), (0.25, 0.75), (0.2, 0.8)]
-    MIN_SNP_COVERAGE_FRAC = 0.6    # min fraction of reads a SNP must cover
-
     locus = cooper.cooper_loci_info[locus_key]
     locus_data = cooper.cooper_loci_data[locus_key]
     locus_cov  = locus_data.depth
@@ -75,7 +71,9 @@ def haplocluster_reads(cooper, locus_key):
         ordered_sig_snps.append(pos)
         sig_snp_data[pos] = { 'cov': snp_data['cov'], 'alleles': snp_data['alleles'], 'qual': snp_data['qual'] }
 
-    min_snp_pos      = qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
+    min_snp_pos       = qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
+
+    THRESHOLD_RANGES  = [(0.3, 0.7), (0.25, 0.75), (0.2, 0.8)]
     if not locus_data.is_genotyped:
         for tier_idx, (lower_thresh, upper_thresh) in enumerate(THRESHOLD_RANGES):
 
@@ -101,7 +99,7 @@ def haplocluster_reads(cooper, locus_key):
                 if tier_idx < 2: continue
                 return -1
 
-            min_snp_pos = merge_snpreadsets(cooper, locus_data, sig_snp_data, ordered_sig_snps)
+            min_snp_pos = merge_snpreadsets(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
 
             if locus_data.is_genotyped or tier_idx == 2:
                 break
@@ -109,7 +107,7 @@ def haplocluster_reads(cooper, locus_key):
     return min_snp_pos
 
 
-def merge_snpreadsets(cooper, locus_data, sig_snp_data, ordered_sig_snps):
+def merge_snpreadsets(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps):
     """
     merge SNP read sets to phase reads into two haplotype clusters.
 
@@ -169,6 +167,9 @@ def merge_snpreadsets(cooper, locus_data, sig_snp_data, ordered_sig_snps):
             sig_snps.extend(sorted(neighbours, key=lambda p: neighbours[p]))
             break
 
+    if cooper.args.amplicon and len(sig_snps) < 3:
+        return -1
+
     # fallback — pick position with lowest sum of two best scores
     if not sig_snps:
         best_pos = min(
@@ -179,6 +180,8 @@ def merge_snpreadsets(cooper, locus_data, sig_snp_data, ordered_sig_snps):
         sig_snps.extend(
             sorted(mismatch_scores[best_pos], key=lambda p: mismatch_scores[best_pos][p])
         )
+
+    # if len(sig_snps) < 2: return -1
 
     # --- build final ordered SNP dict ---
     final_snp_dict = {
@@ -207,6 +210,12 @@ def merge_snpreadsets(cooper, locus_data, sig_snp_data, ordered_sig_snps):
 
     # --- validate phasing coverage ---
     total_phased = len(cluster1) + len(cluster2)
+
+    if cooper.args.amplicon and (locus_data.depth - total_phased > 10 or total_phased < 0.9 * locus_data.depth):
+        locus_data.is_genotyped    = False
+        locus_data.skip_code     = 1
+        return min_snp_pos
+
     if total_phased >= cooper.args.phasing_read * locus_data.depth:
         locus_data.hap_read_sets      = (list(cluster1), list(cluster2))
         locus_data.hap_alen_sets      = ([locus_data.read_alens[ridx][0] for ridx in cluster1], [locus_data.read_alens[ridx][0] for ridx in cluster2])
@@ -275,6 +284,8 @@ def qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps):
         ordered_sig_snps.remove(pos)
 
     if not ordered_sig_snps: return -1
+
+    if cooper.args.amplicon and len(ordered_sig_snps) < 3: return -1
 
     if len(ordered_sig_snps) == 1:
         max_alt_cov = max(len(reads) for reads in sig_snp_data[ordered_sig_snps[0]]['alleles'].values())
@@ -364,6 +375,11 @@ def qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps):
             if   score_a1 < score_a2: cluster2.add(read_a)
             elif score_a1 > score_a2: cluster1.add(read_a)
             phased_reads.add(read_a)
+
+    if cooper.args.amplicon and (locus_data.depth - total_phased > 10 or total_phased < 0.9 * locus_data.depth):
+        locus_data.is_genotyped    = False
+        locus_data.skip_code     = 1
+        return min_snp_pos
 
     # --- validate phasing coverage ---
     total_phased = len(cluster1) + len(cluster2)
