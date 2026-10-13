@@ -162,6 +162,8 @@ def parse_cstag(cooper, read):
                                          locus_query_range[idx],
                                          left_flank_insertions[idx],
                                          right_flank_insertions[idx],
+                                         left_flank_deletions[idx],
+                                         right_flank_deletions[idx],
                                          flank_query_start, flank_query_end]
     for locus_key in N_skip_loci:
         del read.loci_data[locus_key]
