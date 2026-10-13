@@ -149,11 +149,11 @@ def merge_snpreadsets(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
         if mismatch_scores and i == len(snps) - 1:
             break
         mismatch_scores[pos_a] = {}
-        alleles_a = list(sig_snp_data[pos_a]['alleles'].values())
+        readsets_a = list(sig_snp_data[pos_a]['alleles'].values())
 
         for pos_b in snps[i + 1:]:
             score = sum(
-                min(len(reads_b & allele_a) for allele_a in alleles_a)
+                min(len(reads_b & reads_a) for reads_a in readsets_a)
                 for reads_b in sig_snp_data[pos_b]['alleles'].values()
             )
             mismatch_scores[pos_a][pos_b] = score
@@ -307,7 +307,7 @@ def qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps):
         for j, read_b in enumerate(sorted_reads):
             if read_a == read_b: score_matrix.append(0); continue
             if j < i: score_matrix.append(score_matrix[j*len(sorted_reads) + i]); continue
-            
+
             score = 0
             for snp_pos in ordered_sig_snps:
                 allele_a = None; qual_a = None
@@ -377,13 +377,14 @@ def qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps):
             elif score_a1 > score_a2: cluster1.add(read_a)
             phased_reads.add(read_a)
 
+    # --- validate phasing coverage ---
+    total_phased = len(cluster1) + len(cluster2)
+
     if cooper.args.amplicon and (locus_data.depth - total_phased > 10 or total_phased < 0.9 * locus_data.depth):
         locus_data.is_genotyped    = False
         locus_data.skip_code     = 1
         return min_snp_pos
 
-    # --- validate phasing coverage ---
-    total_phased = len(cluster1) + len(cluster2)
     if total_phased >= cooper.args.phased_frac * locus_data.depth and \
        len(cluster1) >= cooper.args.cluster_frac*locus_data.depth and len(cluster2) >= cooper.args.cluster_frac*locus_data.depth:
         locus_data.hap_read_sets      = (list(cluster1), list(cluster2))
