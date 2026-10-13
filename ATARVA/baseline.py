@@ -522,8 +522,8 @@ class Cooper:
         read_index      = 0
         NONREP_FLANK    = 30        # Minimum non-repetitive flank considered for locus processing from softclip region
 
-        softclip_mode   = True
-        if self.args.skip_softclip: softclip_mode = False
+        softclip_mode   = False
+        if self.args.use_softclip or self.args.amplicon: softclip_mode = True
         SOFT_DISTANCE   = 10000 if softclip_mode else 0    # Should be close to average read length, to capture softclipped reads
 
         with PysamWarningCapture(self.logfile):
@@ -642,7 +642,7 @@ class Cooper:
                     for mods in mod_bases:
                         if mods[0][0] == 'C' and mods[0][2] == 'm':
                             mm_tag_extract(read, mods[1])
-                            self.cooper_read_data[read_index].methylation = read.methylation_calls
+                            self.cooper_read_data[read.index].methylation = read.methylation_calls
                             break
 
                     # --- populate loci data ---
@@ -684,7 +684,7 @@ class Cooper:
                                 ldata.min_read_qual = read.mean_qual
                                 ldata.min_qual_read = read.index
 
-                if self.cooper_loci_ends and locus_end > self.cooper_loci_ends[0]:
+                if self.cooper_loci_ends:
                     genotyped_count  += self.locus_processor()
                     self.cooper_read_ends.clear()
                     self.cooper_read_indices.clear()
