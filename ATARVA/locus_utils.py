@@ -200,7 +200,7 @@ def process_flank_insertions(cooper, flank_insertions, ref_allele, ref_length, q
             ILR  += 1
             adj_pos = ins_qs if is_left else ins_qe
             included_insertions.add(ins_rpos)
-    
+
     return adj_pos, included_insertions, ILR, PI, CI
 
 

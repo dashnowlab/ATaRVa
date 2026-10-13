@@ -103,7 +103,7 @@ def match_jump(read, match_refend, match_qryend, match_length, repeat_index, loc
 
         # if the match segment is beyond the end of the repeat; repeat is unaffected
         if match_refstart > flank_end: continue
-            
+
         if not locus_reached[current_index]:
 
             if flank_start <= match_refend:
@@ -327,7 +327,7 @@ def N_jump(read, del_refend, qpos, deletion_len, repeat_index, locus_query_range
                 locus_query_range[current_index][1] = qpos
                 if del_refend > locus_end: locus_boundary_crossed[current_index][1] = True
 
-        
+
 
         # if deletion does not overlap the repeat; skip
         if del_refend < locus_start or del_refstart > locus_end:

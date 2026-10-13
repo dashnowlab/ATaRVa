@@ -49,7 +49,7 @@ def _ref_length(cigartuples: list[tuple[int, int]]):
 def _trim_upcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
     """
     Trim the CIGAR from upstream to exclude repeat coords.
-    
+
     :param cigar_tuples: list of tuples representing the CIGAR string
     :param qpos: query position
     :param rpos: reference position
@@ -86,7 +86,7 @@ def _trim_upcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
 def _trim_downcigar(cigar_tuples, qpos, rpos, repflank_start, repflank_end):
     """
     Trim the CIGAR from downstream to exclude repeat coords.
-    
+
     :param cigar_tuples: list of tuples representing the CIGAR string
     :param qpos: query position
     :param rpos: reference position
@@ -205,7 +205,7 @@ def _conf_downpos(cigar_tuples, rpos, qpos, length_threshold=30):
 
 
 def _conf_uppos(cigar_tuples, rpos, qpos, length_threshold=30):
-    
+
     for idx, (op, length) in enumerate(cigar_tuples):
         if op == 4 or op == 5: qpos += length # soft clip
         if op == 1: qpos += length # insertion
@@ -398,4 +398,3 @@ def process_upstreamsa(cooper, ref, read, sa_read, sa_start, sa_end, sa_cigar, r
         read.cs_tag = join_cstags(sa_cstag, read.cs_tag)
 
     return True
-    

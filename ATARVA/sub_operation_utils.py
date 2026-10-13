@@ -32,7 +32,7 @@ def clamp_zero(value):
 def mm_tag_extract(read, mod_probs):
     """
     record the positions with methylation calls
-    
+
     :param read: pysam AlignedSegment object
     :param mod_probs: list of tuples with modified base positions and their respective probabilities
     :param meth_cutoff: score cutoff for calling methylation

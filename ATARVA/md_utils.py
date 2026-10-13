@@ -36,7 +36,7 @@ def update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
         if cooper_loci_info[locus].start > rpos: break
 
     sub_qval = read.query_qualities[qpos]
-    
+
     if sub_qval >= snp_qual_cutoff and (not is_haploid) and (not is_haplotag):
         sub_char = read.query_sequence[qpos]
         cooper_read_data[read.index].snps.add(rpos)
@@ -68,7 +68,7 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
     :param insertion_point:    dictionary of insertion positions and lengths for this read
     :return:                   None; updates cooper.cooper_snp_data and read.snps in place
     """
-        
+
     if cooper_sorted_snps == None:
         cooper_sorted_snps = SortedList()
 
@@ -79,7 +79,7 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
 
     deletion  = False
     replacing = False
-    
+
     for i in read.md_tag:
 
         if deletion:
@@ -96,7 +96,7 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
                 replacing = False
                 qpos+=1
                 sub_char = ''
-                
+
         elif i.isalpha():
             replacing = True
 
@@ -111,11 +111,11 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
                 pos = base - 1
                 qpos+=1
                 sub_char = ''
-                
+
             sub_base = ''
             sub_char += i
 
-    
+
         else: #i == '^':
             deletion = True
 
@@ -131,8 +131,7 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
                 qpos+=int(sub_base)
                 sub_base = ''
 
-                
+
     if sub_char != '':
         update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
                     snp_qual_cutoff, is_haploid, is_haplotag, read, pos, qpos, insertion_point, True)
-    

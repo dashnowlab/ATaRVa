@@ -47,22 +47,22 @@ def check_flank_order(coords):
 def flag_misaligned_loci(softclip_loci):
     """
     Identify loci that break continuous ascending order of query coordinates.
-    
+
     Assumes loci are in continuous ascending order in the read. Any locus whose
     query start position is <= the previous locus is marked for removal.
     Uses a greedy approach to keep the maximum number of loci in correct order.
-    
+
     Example: query positions [1,2,3,4,5,2,3,6,7,8,1,2,10] 
              -> removes indices of [2,3,1,2] (positions that restart or go backward)
              -> keeps [1,2,3,4,5,6,7,8,10]
-    
+
     :param softclip_loci: list of dicts with 'upstream' and 'downstream' coordinates
     :return: set of indices that should be dropped
     """
-    
+
     if not softclip_loci['coords'] or len(softclip_loci['coords']) < 2:
         return
-    
+
     # Extract upstream query starts (read positions)
     indices    = []
     ups_starts = []
@@ -80,7 +80,7 @@ def flag_misaligned_loci(softclip_loci):
             _, _, uqs, uqe, _ = coords['upstream']  # extract query start
             indices.append(i)
             ups_starts.append(uqs)
-        
+
         elif coords['downstream'] is not None:
             _, _, dqs, dqe, _ = coords['downstream']
             if dqs > prev_uqe:
@@ -88,7 +88,7 @@ def flag_misaligned_loci(softclip_loci):
                 ups_starts.append(prev_uqe)
 
         if _us: prev_uqe = uqe
-    
+
     if len(ups_starts) == 0:
         return
 
@@ -134,7 +134,7 @@ def _coordinates_overlap(coord1, coord2):
     # if separated by less than a kb merge them
     # if end1 < start2 and start2 - end1 <= 0:
     #     return True
-    
+
     if start2 <= end1 and end1 <= end2:
         return True
 
@@ -176,7 +176,7 @@ def _merge_coordinates(coord1, coord2, upstream=True):
                 return coord1
             else:
                 return coord2
-            
+
 
 def check_ref_query_order_consistency(current_coords, next_coords, merged_i, merged_j):
     """
@@ -190,71 +190,71 @@ def check_ref_query_order_consistency(current_coords, next_coords, merged_i, mer
     :return: tuple (locus_to_drop, reason) where locus_to_drop is 'current', 'next', or None
              reason is a string describing why a locus was dropped, or 'ORDER_CONSISTENT' if valid
     """
-    
+
     if current_coords is None or next_coords is None:
         return None, 'INVALID_COORDS'
-    
+
     curr_upstream   = current_coords.get('upstream')
     curr_downstream = current_coords.get('downstream')
     next_upstream   = next_coords.get('upstream')
     next_downstream = next_coords.get('downstream')
-    
+
     # List to track order mismatches
     mismatch_count = 0
     total_comparisons = 0
-    
+
     # Compare current_upstream with next_upstream
     if curr_upstream is not None and next_upstream is not None:
         curr_urs, curr_ure, curr_uqs, curr_uqe, _ = curr_upstream
         next_urs, next_ure, next_uqs, next_uqe, _ = next_upstream
-        
+
         curr_ref_order   = curr_urs < next_urs
         curr_query_order = curr_uqs < next_uqs
         total_comparisons += 1
         if curr_ref_order != curr_query_order:
             mismatch_count += 1
-    
+
     # Compare current_upstream with next_downstream
     if curr_upstream is not None and next_downstream is not None:
         curr_urs, curr_ure, curr_uqs, curr_uqe, _ = curr_upstream
         next_drs, next_dre, next_dqs, next_dqe, _ = next_downstream
-        
+
         curr_ref_order   = curr_urs < next_drs
         curr_query_order = curr_uqs < next_dqs
         total_comparisons += 1
         if curr_ref_order != curr_query_order:
             mismatch_count += 1
-    
+
     # Compare current_downstream with next_upstream
     if curr_downstream is not None and next_upstream is not None:
         curr_drs, curr_dre, curr_dqs, curr_dqe, _ = curr_downstream
         next_urs, next_ure, next_uqs, next_uqe, _ = next_upstream
-        
+
         curr_ref_order   = curr_drs < next_urs
         curr_query_order = curr_dqs < next_uqs
         total_comparisons += 1
         if curr_ref_order != curr_query_order:
             mismatch_count += 1
-    
+
     # Compare current_downstream with next_downstream
     if curr_downstream is not None and next_downstream is not None:
         curr_drs, curr_dre, curr_dqs, curr_dqe, _ = curr_downstream
         next_drs, next_dre, next_dqs, next_dqe, _ = next_downstream
-        
+
         curr_ref_order   = curr_drs < next_drs
         curr_query_order = curr_dqs < next_dqs
         total_comparisons += 1
         if curr_ref_order != curr_query_order:
             mismatch_count += 1
-    
+
     # If no comparisons were made, return as consistent
     if total_comparisons == 0:
         return None, 'INSUFFICIENT_COORDS'
-    
+
     # If all comparisons match, order is consistent
     if mismatch_count == 0:
         return None, 'ORDER_CONSISTENT'
-    
+
     # If there are mismatches, calculate which locus to drop based on length discrepancy
     if curr_upstream is not None and curr_downstream is not None:
         curr_urs, curr_ure, curr_uqs, curr_uqe, _ = curr_upstream
@@ -264,7 +264,7 @@ def check_ref_query_order_consistency(current_coords, next_coords, merged_i, mer
         curr_discrepancy = abs(curr_query_length - curr_ref_length)
     else:
         curr_discrepancy = float('inf')
-    
+
     if next_upstream is not None and next_downstream is not None:
         next_urs, next_ure, next_uqs, next_uqe, _ = next_upstream
         next_drs, next_dre, next_dqs, next_dqe, _ = next_downstream
@@ -273,7 +273,7 @@ def check_ref_query_order_consistency(current_coords, next_coords, merged_i, mer
         next_discrepancy = abs(next_query_length - next_ref_length)
     else:
         next_discrepancy = float('inf')
-    
+
     # Drop the one with larger discrepancy
     if merged_i == True:
         return 'next', 'ORDER_MISMATCH_NEXT_WORSE'
@@ -294,7 +294,7 @@ def process_flanks(softclip_loci, read_ref_start, read_ref_end):
     :param softclip_loci_coords: list of dicts with 'upstream' and 'downstream' coordinates
     :param read_ref_end: end position of the read in the reference
     :return: tuple of (merged_loci, merged_coords)
-    
+
     NOTE:
     urs = upstream reference start;   ure = upstream reference end
     drs = downstream reference start; dre = downstream reference end
@@ -321,7 +321,7 @@ def process_flanks(softclip_loci, read_ref_start, read_ref_end):
         if not check:
             return []
         else: return merged_coords
-    
+
     elif sum([flag is None for flag in softclip_loci['flags']]) == 0:
         return []
 
@@ -332,7 +332,7 @@ def process_flanks(softclip_loci, read_ref_start, read_ref_end):
         if softclip_loci['flags'][i] is not None:
             i += 1
             continue
-        
+
         current_coords = softclip_loci['coords'][i]
         current_locus  = softclip_loci['loci'][i]
 
@@ -352,7 +352,7 @@ def process_flanks(softclip_loci, read_ref_start, read_ref_end):
             if softclip_loci['flags'][i] is not None:
                 j = i + 1
                 break
-            
+
             if softclip_loci['flags'][j] is not None:
                 j += 1
                 continue
@@ -366,7 +366,7 @@ def process_flanks(softclip_loci, read_ref_start, read_ref_end):
                 elif next_coords['upstream'] is not None and (next_coords['upstream'][1] > read_ref_end or (next_coords['upstream'][0] == read_ref_end and next_coords['upstream'][1] == read_ref_end)):
                     check = True
                 if check: continue
-            
+
             locus_to_drop, reason = check_ref_query_order_consistency(current_coords, next_coords, merged[i], merged[j])
 
             if locus_to_drop == 'current':

@@ -263,7 +263,7 @@ def length_genotyper(cooper, locus_key):
 def length_genotyper_gmm(cooper, locus_key):
     """
     Genotype using Gaussian Mixture Model.
-    
+
     :param cooper:     cooper object
     :param locus_key:  key for the locus
     """
@@ -334,7 +334,7 @@ def length_genotyper_gmm(cooper, locus_key):
             min_cluster_size = compute_cluster_cutoff(c1_lengths, c2_lengths)
         elif len(c2_idx) < min_cluster_size <= len(c1_idx):
             min_cluster_size = compute_cluster_cutoff(c2_lengths, c1_lengths)
-    
+
     _assign_genotype(cooper, locus_key, locus_data,
                      c1_idx, c2_idx, c1_lengths, c2_lengths,
                      hap_read_sets, min_cluster_size)
@@ -452,7 +452,7 @@ def collapse_condensed_tree(clusterer, n_clusters=2):
 def length_genotyper_hdbscan(cooper, locus_key):
     """
     Genotype using HDBSCAN — auto cluster count, outlier aware.
-    
+
     :param cooper:     cooper object
     :param locus_key:  key for the locus
     """
@@ -550,7 +550,7 @@ def length_genotyper_hdbscan(cooper, locus_key):
 def length_genotyper_histogram(cooper, locus_key):
     """
     Genotype using histogram peak detection.
-    
+
     :param cooper:     cooper object
     :param locus_key:  key for the locus
     """
@@ -652,7 +652,7 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
         if idx == 0:
             f_dense   = density[0]
             base_left = x_grid[0][0]
-        
+
         if idx < len(peak_density)-1:
             valley_dense = valley_density[idx]
             base_right   = x_grid[valleys[idx]][0]
@@ -675,18 +675,18 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
 
         current_peak = peak_points[idx][0]
         L = (current_peak - base_left); R = (base_right-current_peak) # distance between left boundary to the peak and right boundary to the peak
-        
+
         eps = 1e-8
         # normalized asymmetry/skewness
         K = abs(L - R) / (L + R + eps)
         initial_skewness.append(K)
-        
+
         # final score
         score = ((prominence ** 2) / ((top_contour_widths[idx] + eps) ** 2)) * min_area
-    
+
         initial_score.append(score)
         initial_prominence.append(prominence)
-        
+
         base_left = base_right
 
     initial_skewness = np.array(initial_skewness)
@@ -696,14 +696,14 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
     quality_zk       = 1 / (1 + np.exp(zK))
 
     final_score = ( np.array(initial_score) * quality_zk )
-        
+
     return final_score, initial_prominence, area_covered
 
 
 def length_genotyper_kde(cooper, locus_key):
     """
     Genotype using Kernel Density Estimation (KDE) for peak detection.
-    
+
     :param cooper:     cooper object
     :param locus_key:  key for the locus
     """

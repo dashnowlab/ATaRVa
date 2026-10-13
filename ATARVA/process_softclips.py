@@ -25,7 +25,7 @@ def build_kmer_automaton(seq: str, k: int = 10):
 def has_kmer_match(automaton, Y: str) -> bool:
     """
     Fast existence check — O(|Y|).
-    
+
     :param automaton: Aho-Corasick automaton
     :param Y:         query sequence
     :return:          True if any k-mer from Y is found in the automaton, False otherwise
@@ -212,7 +212,7 @@ def join_cstags(cs_left: str, cs_right: str) -> str:
       cs_left=":10+aa:5"
       cs_right=":3-tt:7"
       -> ":10+aa:8-tt:7"
-    
+
     :param cs_left:  left cs tag fragment (e.g., ":10+aa:5")
     :param cs_right: right cs tag fragment (e.g., ":3-tt:7")
     :return:         joined cs tag (e.g., ":10+aa:8-tt:7")
@@ -395,7 +395,7 @@ def nw_align(query: str, target: str, gap_open: int = 6, gap_extend: int = 3) ->
 def align_sequences(query: str, target: str, gap_open: int = 6, gap_extend: int = 3) -> tuple[str, int]:
     """
     Align query to target using parasail if both sequences < 10kb, otherwise use edlib.
-    
+
     :param query:      query sequence
     :param target:     reference sequence
     :param gap_open:   gap open penalty (used only for parasail)
@@ -706,7 +706,7 @@ def cs_stats(cs):
     """
     Extract match and mismatch counts from CS tag.
     CS tag format: :num (match), *ref_alt (mismatch), +seq (insertion), -seq (deletion)
-    
+
     :param cs: CS tag string
     :return: tuple (matches, mismatches)
     """
@@ -743,7 +743,7 @@ def cs_stats(cs):
 def valid_cs(cs, cigar):
     """
     Validate CS tag against CIGAR string by comparing match and mismatch counts.
-    
+
     :param cs: CS tag string
     :param cigar: CIGAR string
     :return: True if valid, False otherwise
@@ -779,7 +779,7 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
     if locus_start - MINFLANK < read.ref_start and up_softclip > MINFLANK:
         upstream     = cooper.ref.fetch(read.chrom, locus_start - NONREP_FLANK, locus_start)
         softclip_seq = read.query_sequence[:up_softclip]
-        
+
         # checks if there a 10-mer match between the flank and the softclip and then proceeds to align
         # automaton  = build_kmer_automaton(upstream)
         # kmer_match = has_kmer_match(automaton, softclip_seq)
@@ -821,7 +821,7 @@ def check_flank(cooper, read, locus_start, locus_end, up_softclip, down_softclip
         # automaton  = build_kmer_automaton(downstream)
         # kmer_match = has_kmer_match(automaton, softclip_seq)
         # if not kmer_match: return None
-        
+
         alignment_score, _align_score, target_begin, target_end, query_begin, query_end, sCigar = stripSW(Inputs(softclip_seq, downstream), False)
         query_length = query_end - query_begin + 1
         matches, _   = cigar_stats(sCigar, False)

@@ -102,7 +102,7 @@ def parse_cstag(cooper, read):
             qpos += insert_len
             repeat_index += insertion_jump(read, rpos, qpos, insert_len, homopolymer_insert, repeat_index, locus_query_range, flank_query_range,
                                            locus_reached, locus_boundary_crossed, left_flank_insertions, right_flank_insertions)
-        
+
         elif read.cs_tag[i] == 'B':      # insertion; is followed by the inserted bases
             insert_len = ''; i += 1
             while i < cs_len and read.cs_tag[i] not in operations:
@@ -141,7 +141,7 @@ def parse_cstag(cooper, read):
                 #     cooper_read_data[read_index].no_snps.update(range(rpos-no_snp_range, rpos + deletion_len + 1 + no_snp_range))
             rpos += deletion_len
             repeat_index += N_jump(read, rpos, qpos, deletion_len, repeat_index, locus_query_range, flank_query_range, locus_reached, locus_boundary_crossed, N_skip_loci)
-            
+
     num_read_loci = len(read.loci_coords)
     for idx, locus_key in enumerate(read.loci_keys):
         # changing all the query coordinates to be relative to the start of the flank start

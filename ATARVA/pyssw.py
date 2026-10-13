@@ -256,7 +256,7 @@ def main(args):
             qRcProfile = ssw.ssw_init(qRcNum, ct.c_int32(len(sQSeq)), mat, len(lEle), 2)
 # set mask len
         nMaskLen = len(sQSeq) // 2
-        
+
 # iter target sequence
         for sRId,sRSeq,_ in read(args.target):
             rNum = to_int(sRSeq, lEle, dEle2Int)

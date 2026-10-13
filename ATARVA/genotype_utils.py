@@ -73,7 +73,7 @@ def analyse_genotype(cooper, locus_key):
     ucluster = [len(locus_data.read_aseqs[rid][0]) for rid in locus_data.reads if rid not in phased_reads]
     if ucluster:
         locus_data.gt_ucluster = (locus_data.gt_ucluster[0], locus_data.gt_ucluster[1], '-'.join([str(x) for x in sorted(ucluster)]))
-    
+
     write_heterozygous_call(cooper, locus_key)
 
     return

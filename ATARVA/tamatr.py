@@ -77,7 +77,7 @@ def write_header(out, bam_name, source_vcf_path):
         vcf_header.contigs.add(contig, length=metadata.length)
     info_mp_cutoff = source_vcf.header.info["MPC"].description
     source_vcf.close()
-    
+
     #sample_name
     for each_sample in bam_name:
         vcf_header.add_sample(each_sample)

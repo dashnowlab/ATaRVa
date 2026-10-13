@@ -80,7 +80,7 @@ def check_alnfile(bamfile, args):
     aln_file = pysam.AlignmentFile(bamfile, args.aln_format)
     for read in aln_file.fetch():
         if (read.flag & 0X400) or (read.flag & 0X100): continue 
-        
+
         n_reads += 1
         if read.has_tag('cs'):
             print("CS tag detected. Processing using CS tag...\n")

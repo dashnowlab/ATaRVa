@@ -107,7 +107,7 @@ class CSsw(object):
         init all para
         @para   sLibpath    argparse object
         """
-        
+
         if sLibPath:
 # user does give the path explicitly
             if not op.exists(op.join(sLibPath, sLibName)):

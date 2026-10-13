@@ -61,7 +61,7 @@ class ReadInfo:
         :param lower: lower threshold for methylation probability to consider as methylated
         :param upper: upper threshold for methylation probability to consider as unmethylated
         :return: tuple of (average methylation level, list of methylation positions, list of methylation encodings for visualization)
-        
+
         Note: The methylation encoding is
               -   -1 for uncertain methylation status (probability between lower and upper), 
               -    1 for methylated (probability >= upper)

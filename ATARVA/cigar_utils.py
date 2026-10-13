@@ -17,12 +17,12 @@ def subex(ref, query):
     if '=' in query:
         array = np.frombuffer(query.encode(), dtype=np.byte)
         substitution_indices = np.where(array != ord('='))[0]
-        
+
     else:
         array1 = np.frombuffer(ref.encode(), dtype=np.byte)
         array2 = np.frombuffer(query.encode(), dtype=np.byte)
         substitution_indices = np.where(array1 != array2)[0]
-        
+
     return substitution_indices
 
 
@@ -127,7 +127,7 @@ def parse_cigar(cooper, read):
             qpos += insert_len
             repeat_index += B_jump(read, rpos, qpos, insert_len, homopolymer_insert, repeat_index, locus_query_range, flank_query_range,
                                    locus_reached, locus_boundary_crossed, left_flank_insertions, right_flank_insertions)
-        
+
         elif cigar[0] == 0: # match (includes substitutions)
             match_len = cigar[1]
             if not has_MD and (not haploid) and (not is_haplotag):

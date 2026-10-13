@@ -41,7 +41,7 @@ def stripSW(args, case):
     lEle = []
     dEle2Int = {}
     dInt2Ele = {}
-    
+
     lEle = ['A', 'C', 'G', 'T', 'N']
     for i,ele in enumerate(lEle):
         dEle2Int[ele] = i
@@ -55,19 +55,19 @@ def stripSW(args, case):
                 lScore[i*nEleNum+j] = args.nMatch
             else:
                 lScore[i*nEleNum+j] = -args.nMismatch
-    
+
     ssw = ssw_lib.CSsw(args.sLibPath)
-    
+
     sRSeq = args.target
     sQSeq = args.query
-    
+
     qNum = pyssw.to_int(sQSeq, lEle, dEle2Int)
     mat = (len(lScore) * ct.c_int8) ()
     mat[:] = lScore
     qProfile = ssw.ssw_init(qNum, ct.c_int32(len(sQSeq)), mat, len(lEle), 2)
     nMaskLen = len(sQSeq) // 2
     nFlag = 2
-    
+
     rNum = pyssw.to_int(sRSeq, lEle, dEle2Int)
     if nMaskLen<15:
         original_stderr = os.dup(sys.stderr.fileno())
@@ -77,7 +77,7 @@ def stripSW(args, case):
     else:
         res = pyssw.align_one(ssw, qProfile, rNum, len(sRSeq), args.nOpen, args.nExt, nFlag, nMaskLen)
     sCigar, sQ, sA, sR = pyssw.buildPath(sQSeq, sRSeq, res[4], res[2], res[8])
-    
+
     if case:
         return sA, [res[4], res[5]]
     else:
