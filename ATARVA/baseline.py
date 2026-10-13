@@ -90,7 +90,7 @@ class Cooper:
 
         with PysamWarningCapture(self.logfile):
             self.tbx = pysam.Tabixfile(args.regions)
-            self.bam = pysam.AlignmentFile(bam_file, args.aln_format)
+            self.bam = pysam.AlignmentFile(bam_file, args.aln_format, reference_filename=args.fasta)
             self.ref = pysam.FastaFile(args.fasta)
 
         self.args       = args
