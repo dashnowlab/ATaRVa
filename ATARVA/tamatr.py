@@ -110,6 +110,8 @@ def write_header(out, bam_name, source_vcf_path):
     vcf_header.formats.add("MR", number='.', type="Integer",  description="Number of informative reads for methylation scoring for each allele")
     vcf_header.formats.add("DS", number='A', type="String",   description="Motif decomposed sequence for each allele sequence")
     vcf_header.formats.add("MV", number='.', type="String",   description="Base methylation score encoded for visualization for each allele")
+    vcf_header.formats.add("OL", number='1', type="String",   description="The outlier lengths observed in the phased reads and unphased reads for the locus")
+    vcf_header.formats.add("FV", number='1', type="String",   description="Flag indicating presence of variants in the flank of the repeat locus")
     vcf_header.formats.add("PS", number='1', type="String",   description="Phase Set assigned in the phasing process if available in alignment file")
 
     out.write(str(vcf_header))
