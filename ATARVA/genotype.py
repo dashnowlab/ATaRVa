@@ -20,8 +20,9 @@ FORMAT_MAP = {
     'bam' : 'rb'
 }
 
-DEFAULT_MAX_READS = 100
-DEFAULT_FLANK     = 10
+DEFAULT_MAX_READS    = 100
+DEFAULT_AMPMAX_READS = 5000
+DEFAULT_FLANK        = 10
 
 def genotype_parser(subparsers):
     """Argument parser for the genotype sub-command of ATaRVa"""
@@ -53,7 +54,7 @@ def genotype_parser(subparsers):
     # Read filtering
     opt.add_argument('--map-qual',       metavar='<INT>',   type=int,   default=5,    help='minimum mapping quality [default: 5]')
     opt.add_argument('--min-reads',      metavar='<INT>',   type=int,   default=10,   help='minimum read coverage at a locus [default: 10]')
-    opt.add_argument('--max-reads',      metavar='<INT>',   type=int,   default=None, help='maximum reads per locus [default: 100]')
+    opt.add_argument('--max-reads',      metavar='<INT>',   type=int,   default=None, help='maximum reads per locus [default: 100; 5000 for amplicon mode]')
     opt.add_argument('--flank',          metavar='<INT>',   type=int,   default=None, help='flank length (bp) to search for insertions [default: 10]')
 
     # SNP phasing
@@ -255,7 +256,11 @@ def genotype_run(args) -> None:
     )
 
     # --- mode defaults ---
-    if args.max_reads is None: args.max_reads = DEFAULT_MAX_READS
+    if args.max_reads is None:
+        if args.amplicon:
+            args.max_reads = DEFAULT_AMPMAX_READS
+        else:
+            args.max_reads = DEFAULT_MAX_READS
     if args.flank     is None: args.flank     = DEFAULT_FLANK
 
     multi_bam_single_out = len(args.bam) > 1 and args.vcf

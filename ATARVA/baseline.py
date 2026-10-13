@@ -394,13 +394,12 @@ class Cooper:
                 if not read.loci_coords: continue
 
                 read_required = True
-                if not self.args.amplicon:
-                    for key in read.loci_keys:
-                        if self.cooper_loci_data[key].depth >= self.args.max_reads and self.cooper_loci_data[key].min_read_qual >= read.mean_qual:
-                            read_required = False
-                        else:
-                            read_required = True
-                            break
+                for key in read.loci_keys:
+                    if self.cooper_loci_data[key].depth >= self.args.max_reads and self.cooper_loci_data[key].min_read_qual >= read.mean_qual:
+                        read_required = False
+                    else:
+                        read_required = True
+                        break
                 # if all loci have enough supporting reads with highest quality; this read is not processed
                 if not read_required: continue
 
@@ -462,7 +461,7 @@ class Cooper:
                     if checked_insupp: continue
 
                     ldata = self.cooper_loci_data[locus_key]
-                    if not self.args.amplicon and ldata.depth >= self.args.max_reads:
+                    if ldata.depth >= self.args.max_reads:
                         if read.mean_qual > ldata.min_read_qual:
                             ldata.reads.append(read.index)
                             ldata.depth += 1
