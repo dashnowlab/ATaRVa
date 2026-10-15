@@ -358,8 +358,13 @@ def process_upstreamsa(cooper, ref, read, sa_read, sa_start, sa_end, sa_cigar, r
         return False
 
     flank = 0
-    pa_rpos, pa_qpos, pa_trimmed_cigar = _trim_upcigar(read.cigartuples, 0, read.ref_start, repeat_flank_start-flank, repeat_flank_end+flank)
-    sa_rpos, sa_qpos, sa_trimmed_cigar = _trim_downcigar(sa_cigar, _query_length(sa_cigar), sa_end, repeat_flank_start-flank, repeat_flank_end+flank)
+    result_up   = _trim_upcigar(read.cigartuples, 0, read.ref_start, repeat_flank_start-flank, repeat_flank_end+flank)
+    result_down = _trim_downcigar(sa_cigar, _query_length(sa_cigar), sa_end, repeat_flank_start-flank, repeat_flank_end+flank)
+    if result_up is None or result_down is None:
+        return False
+    
+    pa_rpos, pa_qpos, pa_trimmed_cigar = result_up
+    sa_rpos, sa_qpos, sa_trimmed_cigar = result_down
 
     sa_conf_rpos, sa_conf_qpos, sa_conf_cigar = sa_rpos, sa_qpos, sa_trimmed_cigar
     pa_conf_rpos, pa_conf_qpos, pa_conf_cigar = pa_rpos, pa_qpos, pa_trimmed_cigar
