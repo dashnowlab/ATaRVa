@@ -12,23 +12,25 @@ The `-i` / `--vcfs` option accepts multiple VCF files as input. Alternatively, a
 
 ## Usage
 ```
-usage: atarva merge [-h] -r <FILE> -i <FILE> [<FILE> ...] -f <FILE> [--contigs CONTIGS [CONTIGS ...]] [-o <STR>] [-p <INT>]
+usage: atarva merge [-h] -i <FILE> [<FILE> ...] -r <FILE> -f <FILE> -o <FILE> [--contigs CONTIGS [CONTIGS ...]] [--format-keys <STR> [<STR> ...]] [-t <INT>]
+
+Merge ATaRVa VCF files
 
 Required arguments:
-  -r <FILE>, --regions <FILE>
-                        input regions file. the regions file should be strictly in bgzipped tabix format. If the regions input file is in bed format. First sort it using bedtools. Compress it using
-                        bgzip. Index the bgzipped file with tabix command from samtools package.
   -i <FILE> [<FILE> ...], --vcfs <FILE> [<FILE> ...]
-                        text file containing paths to input vcf files to be merged. The text file should list each path on a separate line. The vcf files should be strictly in bgzipped tabix format. If
-                        the vcfs input file is in vcf format. First sort it using bcftools. Compress it using bgzip. Index the bgzipped file with tabix command from samtools package.
+                        ATaRVa output VCF files to be merged.
+  -r <FILE>, --regions <FILE>
+                        bgzipped + tabix-indexed regions file. Prepare: sort with bedtools→ bgzip → tabix index. Include with reference fasta file.
   -f <FILE>, --fasta <FILE>
-                        input reference fasta file. The file should be indexed.
+                        input reference fasta file. requed if --regions is provided. Prepare: samtools faidx.
+  -o <FILE>, --out <FILE>
+                        name of the output file, output is in vcf format.
 
 Optional arguments:
   --contigs CONTIGS [CONTIGS ...]
                         contigs to get merged [chr1 chr12 chr22 ..]. If not mentioned every contigs in the region file will be merged.
-  -o <STR>, --outname <STR>
-                        name of the output file, output is in vcf format.
+  --format-keys <STR> [<STR> ...]
+                        FORMAT keys to keep in output. GT is by default part of the output. (default: GT,AL,CN,AR,SD,DP,SN,SQ,MA,MR,DS,MV,OL,FV,PS)
   -t <INT>, --threads <INT>
                         number of threads. [default: 1]
 ```
