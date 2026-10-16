@@ -1,0 +1,122 @@
+name: HG002 TR benchmark
+
+# Scores ATaRVa's genotype calls against str-truth-set-v2's HG002 truth set on the fixed
+# local subset in benchmark/ -- see benchmark/README.md for the full design writeup. This
+# workflow benchmarks only the version checked out by the trigger (a release tag, or main
+# on the monthly schedule); comparisons against other ATaRVa versions (upstream releases,
+# older tags) are a local-only activity -- run them by hand and commit the resulting
+# baseline_history.tsv rows separately, see benchmark/README.md.
+"on":
+  release:
+    types: [published]
+  schedule:
+    # 06:00 UTC on the 1st of each month. GitHub may delay scheduled runs by several
+    # minutes to hours under load; that's fine for a monthly check.
+    - cron: "0 6 1 * *"
+  workflow_dispatch: {}
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # autoconf/automake/libtool: ATaRVa's `pip install .` builds parasail from source, which
+      # needs them. samtools/tabix (bgzip ships in the tabix package)/bedtools: used throughout
+      # benchmark/scripts/ for BAM/BED/VCF handling.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool samtools tabix bedtools
+
+      - name: Set up ATaRVa venv
+        run: |
+          python3 -m venv benchmark/atarva_env
+          source benchmark/atarva_env/bin/activate
+          pip install --upgrade pip
+          pip install build
+          pip install .
+          # str_analysis (pinned commit, for 06_score_strts_native.py's VCF<->JSON<->TSV
+          # conversion) and pandas<3 (that reused code predates pandas 3's strict string
+          # dtypes -- see 06_score_strts_native.py's docstring) -- installed after ATaRVa
+          # itself so this pin doesn't fight ATaRVa's own numpy/pandas-adjacent pins.
+          pip install 'git+https://github.com/broadinstitute/str-analysis@3d5e3dc37161d41a1bc6f92afdcf3fc99e81b30a' \
+              intervaltree 'pandas<3'
+
+      - name: Download Aardvark
+        run: |
+          mkdir -p benchmark/tools
+          curl -fsSL -o /tmp/aardvark.tar.gz \
+              https://github.com/PacificBiosciences/aardvark/releases/download/v1.0.0/aardvark-v1.0.0-x86_64-unknown-linux-gnu.tar.gz
+          tar xzf /tmp/aardvark.tar.gz -C benchmark/tools/
+
+      # The subset bundle (reference, reads, truth VCF, catalog -- benchmark/data/) and the
+      # shared downloads it's built from (benchmark/research/) are fixed by design (seed 42,
+      # str-truth-set-v2's published HG002 data) and take ~15-20 min to build (network-bound
+      # remote region queries), so they're cached rather than rebuilt every run. The key is
+      # keyed on the two scripts that determine the bundle's content, so an intentional design
+      # change (e.g. a different locus count) automatically busts the cache; a remote-data
+      # change upstream (str-truth-set-v2 publishing new HG002 data) would not, since there's
+      # no cheap way to hash that from here -- bump CACHE_VERSION below to force a rebuild.
+      - name: Restore benchmark data cache
+        id: cache-data
+        uses: actions/cache@v4
+        with:
+          path: |
+            benchmark/data
+            benchmark/research
+          key: benchmark-data-v1-${{ hashFiles('benchmark/scripts/01_select_loci.py', 'benchmark/scripts/02_build_subset.py') }}
+
+      - name: Build benchmark subset
+        if: steps.cache-data.outputs.cache-hit != 'true'
+        run: |
+          source benchmark/atarva_env/bin/activate
+          python3 benchmark/scripts/01_select_loci.py
+          python3 benchmark/scripts/02_build_subset.py --tech pacbio
+          python3 benchmark/scripts/02_build_subset.py --tech ont --skip-shared
+
+      - name: Detect ATaRVa version
+        id: atarva-version
+        run: |
+          source benchmark/atarva_env/bin/activate
+          BIN=$(command -v atarva-ext || command -v atarva)
+          VERSION="$("$BIN" --version 2>&1 | tail -1 | sed -E 's/^ATaRVa version //')"
+          echo "bin=$BIN" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected $BIN $VERSION"
+
+      - name: Genotype and score
+        run: |
+          source benchmark/atarva_env/bin/activate
+          rm -f benchmark/data/latest_metrics.tsv
+          for tech in pacbio ont; do
+            benchmark/scripts/03_run_atarva.sh "$tech" benchmark/data benchmark/atarva_env
+            python3 benchmark/scripts/04_score.py --tech "$tech" \
+                --atarva-version "${{ steps.atarva-version.outputs.version }}"
+            python3 benchmark/scripts/06_score_strts_native.py --tech "$tech" \
+                --atarva-version "${{ steps.atarva-version.outputs.version }}"
+          done
+
+      - name: Check for regressions
+        run: |
+          source benchmark/atarva_env/bin/activate
+          python3 benchmark/scripts/07_check_regression.py
+
+      # Not auto-committed: baseline_history.tsv gaining rows from every scheduled/release run
+      # would need CI write access to the repo and could race with concurrent runs. Download
+      # this artifact and commit it by hand (a normal PR) when you want this run's numbers kept
+      # in history -- same as any local run.
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ steps.atarva-version.outputs.version }}
+          path: |
+            benchmark/baseline_history.tsv
+            benchmark/data/latest_metrics.tsv
+          retention-days: 90
