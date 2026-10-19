@@ -18,9 +18,9 @@ def seq_organiser(seqs):
             seq_lens[slen].append(seq)
         else:
             seq_lens[slen] = [seq]
-    sorted_mode_seqs = sorted(seq_lens.values(), key=lambda x : len(x), reverse=True)
-    flat_list = list(chain.from_iterable(sorted_mode_seqs))
-    del seq_lens, sorted_mode_seqs
+    sorted_seqs = sorted(seq_lens.values(), key=lambda x : len(x), reverse=True)
+    flat_list   = list(chain.from_iterable(sorted_seqs))
+    del seq_lens, sorted_seqs
     return flat_list
 
 

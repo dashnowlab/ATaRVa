@@ -377,7 +377,9 @@ class Cooper:
                     locus_end   = self.cooper_loci_info[locus_key].end
                     left_flank  = min(self.args.flank, clamp_zero(locus_start - read.ref_start))
                     right_flank = min(self.args.flank, clamp_zero(read.ref_end  - locus_end))
-                    if left_flank >= 5 and right_flank >= 5 and read.ref_start <= locus_start - left_flank and locus_end + right_flank <= read.ref_end:
+                    if (left_flank >= 5 and right_flank >= 5 and read.ref_start <= locus_start - left_flank and locus_end + right_flank <= read.ref_end) \
+                        or (left_flank  < 5 and softclip_result is None) \
+                        or (right_flank < 5 and softclip_result is None):
                         read.left_flanks[idx]  = left_flank
                         read.right_flanks[idx] = right_flank
                         read.loci_coords[idx]  = (locus_start - left_flank, locus_end + right_flank)

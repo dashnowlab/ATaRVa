@@ -225,7 +225,8 @@ def assign_hap_category(locus_data):
     filtered_seqs = {seq: count for seq, count in seq_counter.items() if count > 1}
     max_freq = max(filtered_seqs.values()) if filtered_seqs else 0
     # if len(filtered_seqs) == 1 or max_freq / locus_data.depth >= 0.75:
-    if max_freq / locus_data.depth >= 0.9:
+    # if max_freq / locus_data.depth >= 0.9:
+    if len(filtered_seqs) == 1:
         locus_data.hap_category    = 1 # homozygous
         return
 
