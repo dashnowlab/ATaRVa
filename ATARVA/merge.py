@@ -64,9 +64,10 @@ def merge_parser(subparsers):
     required.add_argument('-o', '--out',  type=str,  required=True, metavar='<FILE>', help="name of the output file, output is in vcf format.")
 
     optional = parser.add_argument_group('Optional arguments')
-    optional.add_argument('--contigs',       nargs='+', help='contigs to get merged [chr1 chr12 chr22 ..]. If not mentioned every contigs in the region file will be merged.')
-    optional.add_argument('--format-keys',   nargs='+', metavar='<STR>', default=','.join(DEFAULT_KEYS), help=f'FORMAT keys to keep in output. GT is by default part of the output. (default: {",".join(DEFAULT_KEYS)})')
-    optional.add_argument('-t', '--threads', type=int,  metavar='<INT>', default=1,    help='number of threads. [default: 1]')
+    optional.add_argument('--contigs',       nargs='+', help="Contigs to get merged [chr1 chr12 chr22 ..]. If not mentioned every contigs in the region file will be merged.")
+    optional.add_argument('--format-keys',   nargs='+', metavar='<STR>', default=','.join(DEFAULT_KEYS), help=f"FORMAT keys to keep in output. GT is by default part of the"
+                                                                                                               " output. (default: {','.join(DEFAULT_KEYS)})")
+    optional.add_argument('-t', '--threads', type=int,  metavar='<INT>', default=1,    help="number of threads. [default: 1]")
 
     if (len(sys.argv) == 2) and (sys.argv[1] == 'merge'):
         parser.print_help()

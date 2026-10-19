@@ -26,7 +26,7 @@ def subex(ref, query):
     return substitution_indices
 
 
-def outside_locus(loci_coords, rpos):
+def outside_locus(loci_coords, left_flanks, right_flanks, rpos):
     """
     Check if the position is outside all locus ranges (sorted coords)
 
@@ -35,9 +35,13 @@ def outside_locus(loci_coords, rpos):
     :return: True if the position is outside all locus ranges, False otherwise
     """
 
-    starts = [c[0] for c in loci_coords]
+    left_flanks  = [0 if lf < 0 else lf for lf in left_flanks]
+    right_flanks = [0 if rf < 0 else rf for rf in right_flanks]
+    coords = [(loci_coords[i][0] + left_flanks[i], loci_coords[i][1] - right_flanks[i]) for i in range(len(loci_coords))]
+
+    starts = [c[0] for c in coords]
     idx    = bisect.bisect_right(starts, rpos) - 1
-    return idx < 0 or rpos > loci_coords[idx][1]
+    return idx < 0 or rpos > coords[idx][1]
 
 
 def parse_cigar(cooper, read):
@@ -130,7 +134,7 @@ def parse_cigar(cooper, read):
 
         elif cigar[0] == 0: # match (includes substitutions)
             match_len = cigar[1]
-            if not has_MD and (not haploid) and (not is_haplotag):
+            if (not has_MD) and (not haploid) and (not is_haplotag):
                 ref_sequence   = reference.fetch(chrom, rpos, rpos + match_len)
                 query_sequence = qseq[qpos:qpos + match_len]
 
@@ -139,13 +143,13 @@ def parse_cigar(cooper, read):
 
                 substitutions = subex(ref_sequence, query_sequence)
                 for sub_pos in substitutions:
-                    if not outside_locus(read.loci_coords, rpos + sub_pos):
+                    if not outside_locus(read.loci_coords, read.left_flanks, read.right_flanks, rpos + sub_pos):
                         continue
                     sub_nuc  = query_sequence[sub_pos]
                     sub_qual = qquals[qpos + sub_pos]
+                    sub_pos  = rpos + sub_pos
                     if sub_qual < snp_qual_cutoff: continue
 
-                    sub_pos = rpos + sub_pos
                     cooper_read_data[read_index].snps.add(sub_pos)
                     if sub_pos not in snp_data:
                         snp_data[sub_pos] = SNP(cov = 1, sub = { sub_nuc: {read_index} }, qual={ read_index: sub_qual })
@@ -157,7 +161,6 @@ def parse_cigar(cooper, read):
                             snp_data[sub_pos].sub[sub_nuc].add(read_index)
                         else:
                             snp_data[sub_pos].sub[sub_nuc] = {read_index}
-
             qpos += match_len; rpos += match_len
             repeat_index += match_jump(read, rpos, qpos, match_len, repeat_index, locus_query_range, flank_query_range, locus_reached, locus_boundary_crossed)
 

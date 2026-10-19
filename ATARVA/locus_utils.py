@@ -216,19 +216,19 @@ def assign_hap_category(locus_data):
         locus_data.hap_category = 3 # phased based on haplotag
         return
 
-    read_aseqs = [aseq[0] for aseq in locus_data.read_aseqs.values()]
-    locus_data.phase_mode = None
-    seq_counter = {}
-    for aseq in read_aseqs:
-        try: seq_counter[aseq] += 1
-        except KeyError: seq_counter[aseq] = 1
-    filtered_seqs = {seq: count for seq, count in seq_counter.items() if count > 1}
-    max_freq = max(filtered_seqs.values()) if filtered_seqs else 0
+    # read_aseqs = [aseq[0] for aseq in locus_data.read_aseqs.values()]
+    # locus_data.phase_mode = None
+    # seq_counter = {}
+    # for aseq in read_aseqs:
+    #     try: seq_counter[aseq] += 1
+    #     except KeyError: seq_counter[aseq] = 1
+    # filtered_seqs = {seq: count for seq, count in seq_counter.items() if count > 1}
+    # max_freq = max(filtered_seqs.values()) if filtered_seqs else 0
     # if len(filtered_seqs) == 1 or max_freq / locus_data.depth >= 0.75:
     # if max_freq / locus_data.depth >= 0.9:
-    if len(filtered_seqs) == 1:
-        locus_data.hap_category    = 1 # homozygous
-        return
+    # if len(seq_counter) == 1:
+    #     locus_data.hap_category    = 1 # homozygous
+    #     return
 
     locus_data.hap_category = 2 # ambiguous
 
