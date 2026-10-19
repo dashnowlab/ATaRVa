@@ -26,6 +26,24 @@ def subex(ref, query):
     return substitution_indices
 
 
+def make_checker(ranges):
+    """Build a function that tells whether a position falls in any (start, end) range."""
+    merged = []
+    for s, e in sorted(set(ranges)):
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+    starts = [s for s, _ in merged]
+    ends = [e for _, e in merged]
+
+    def in_ranges(pos):
+        i = bisect.bisect_right(starts, pos) - 1
+        return i >= 0 and pos <= ends[i]
+
+    return in_ranges
+
+
 def outside_locus(loci_coords, left_flanks, right_flanks, rpos):
     """
     Check if the position is outside all locus ranges (sorted coords)
@@ -39,9 +57,11 @@ def outside_locus(loci_coords, left_flanks, right_flanks, rpos):
     right_flanks = [0 if rf < 0 else rf for rf in right_flanks]
     coords = [(loci_coords[i][0] + left_flanks[i], loci_coords[i][1] - right_flanks[i]) for i in range(len(loci_coords))]
 
-    starts = [c[0] for c in coords]
-    idx    = bisect.bisect_right(starts, rpos) - 1
-    return idx < 0 or rpos > coords[idx][1]
+    # starts = [c[0] for c in coords]
+    # idx    = bisect.bisect_right(starts, rpos) - 1
+    # return idx < 0 or rpos > coords[idx][1]
+    checker = make_checker(coords)
+    return not checker(rpos)
 
 
 def parse_cigar(cooper, read):
