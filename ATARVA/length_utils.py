@@ -97,7 +97,7 @@ def homozygous_call(cooper, locus_key):
     lower, upper = (round(x) for x in np.percentile(np.array(hap_lengths), [2.5, 97.5]))
     ucluster     = [str(a) for a in sorted([x for x in hap_lengths if x < lower or x > upper])]
 
-    ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
+    ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads, cooper.args.amplicon)
 
     locus_data.gt_aseqs        = (ALT, None)
     locus_data.gt_alens        = (allele_length, None)
@@ -134,7 +134,7 @@ def heterozygous_call(cooper, locus_key):
         hap_reads = hap_read_sets[i]
         phased_reads |= set(hap_reads)
         hap_lengths = hap_alen_sets[i]
-        ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
+        ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads, cooper.args.amplicon)
         lower, upper = (round(x) for x in np.percentile(np.array(hap_lengths), [2.5, 97.5]))
         ucluster = [str(a) for a in sorted([x for x in hap_lengths if x < lower or x > upper])]
         if i == 0:

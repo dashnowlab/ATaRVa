@@ -228,7 +228,7 @@ def calculate_methylation(read_indices, read_methylation, consensus_seq):
         return [None, None, None]
 
 
-def alt_sequence(read_alleles, hap_reads):
+def alt_sequence(read_alleles, hap_reads, amplicon):
     """
     generates alt sequence and reports characteristics
 
@@ -247,7 +247,7 @@ def alt_sequence(read_alleles, hap_reads):
             try: length_counter[len(seq)] += 1
             except KeyError: length_counter[len(seq)] = 1
         seqs = sorted(seqs, key=lambda x: (-length_counter[len(x)], len(x), x))  # sort by frequency of length then length
-        ALT = consensus_seq_poa(seqs)
+        ALT = consensus_seq_poa(seqs, amplicon)
         allele_length = len(ALT)
     else:
         ALT = '<DEL>'

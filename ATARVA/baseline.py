@@ -765,7 +765,7 @@ class Cooper:
                     locus_data.gt_decomp_seqs = (decomp_seq, decomp_seq)
 
             else:
-                ALT, allele_length = alt_sequence(locus_data.read_aseqs, locus_data.reads)
+                ALT, allele_length = alt_sequence(locus_data.read_aseqs, locus_data.reads, self.args.amplicon)
                 meth_data = calculate_methylation(locus_data.reads, locus_data.read_methylation, ALT)
                 locus_data.gt_alens       = (len(ALT), len(ALT))
                 if ucluster: locus_data.gt_ucluster    = ('-'.join(ucluster), '-'.join(ucluster), None)
@@ -803,7 +803,7 @@ class Cooper:
                 ucluster     = [str(a) for a in sorted([x for x in alen_list if x < lower or x > upper])]
 
                 if seqs:
-                    ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads)
+                    ALT, allele_length = alt_sequence(locus_data.read_aseqs, hap_reads, self.args.amplicon)
                     allele_length = len(ALT)
                 else:
                     ALT           = '<DEL>'
