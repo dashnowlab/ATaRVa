@@ -77,16 +77,17 @@ class Cooper:
         """
 
         self.terminal_stderr = os.fdopen(os.dup(2), 'w')
+        self.logfile         = os.devnull
 
         # --- output paths ---
         is_primary = thread_idx in (-1, 0)
         if is_primary:
             self.outfile = f'{out_file}.vcf'
-            self.logfile = f'{out_file}_debug.log'
+            if args.debug_mode: self.logfile = f'{out_file}_debug.log'
         else:
             hidden = _hidden_path(out_file)
             self.outfile = f'{hidden}_thread_{thread_idx}.vcf'
-            self.logfile = f'{hidden}_debug_{thread_idx}.log'
+            if args.debug_mode: self.logfile = f'{hidden}_debug_{thread_idx}.log'
 
         with PysamWarningCapture(self.logfile):
             self.tbx = pysam.Tabixfile(args.regions)
@@ -204,7 +205,7 @@ class Cooper:
 
         softclip_mode   = False
         if self.args.use_softclip or self.args.amplicon: softclip_mode = True
-        DROP_DISTANCE   = 100000 #  if softclip_mode else 0    # distance beyond which reads and loci are dropped from memory
+        DROP_DISTANCE   = 30000 #  if softclip_mode else 0    # distance beyond which reads and loci are dropped from memory
 
         with PysamWarningCapture(self.logfile):
             for raw_read in self.bam.fetch(chrom, region_start, region_end):
@@ -286,7 +287,8 @@ class Cooper:
 
                     # check if the locus is outside the read's reference boundaries check if it's in the softclipped region
                     softclip_result = None
-                    if softclip_mode and locus_start - self.args.flank < read.ref_start:
+                    if softclip_mode and locus_start - self.args.flank < read.ref_start and \
+                        (start_softclip < DROP_DISTANCE and end_softclip < DROP_DISTANCE):
                         if read.query_name in self.supp_reads:
                             for sa_read in self.supp_reads[read.query_name][0][:-1]:
                                 # Checking if any of the upstream supplementary alignments cover the locus with flanks
@@ -319,7 +321,8 @@ class Cooper:
                                         softclip_loci['coords'] = [coord for idx, coord in enumerate(softclip_loci['coords']) if idx not in del_softclip_idx]
                                         softclip_loci['flags'] = [flag for idx, flag in enumerate(softclip_loci['flags']) if idx not in del_softclip_idx]
 
-                    if softclip_mode and (locus_start - self.args.flank < read.ref_start or locus_end + self.args.flank > read.ref_end):
+                    if softclip_mode and (locus_start - self.args.flank < read.ref_start or locus_end + self.args.flank > read.ref_end) and \
+                        (start_softclip < DROP_DISTANCE and end_softclip < DROP_DISTANCE):
                         softclip_result = check_flank(self, read, locus_start, locus_end, start_softclip, end_softclip)
                         # result structure {'upstream':   (ref_flank_start, ref_flank_end, query_flank_start, query_flank_end),
                         #                   'downstream': (ref_flank_start, ref_flank_end, query_flank_start, query_flank_end)}
@@ -377,7 +380,9 @@ class Cooper:
                     locus_end   = self.cooper_loci_info[locus_key].end
                     left_flank  = min(self.args.flank, clamp_zero(locus_start - read.ref_start))
                     right_flank = min(self.args.flank, clamp_zero(read.ref_end  - locus_end))
-                    if (left_flank >= 5 and right_flank >= 5 and read.ref_start <= locus_start - left_flank and locus_end + right_flank <= read.ref_end) \
+                    if locus_start < read.ref_start or locus_end > read.ref_end:
+                        del_locikeys.append(locus_key)
+                    elif (left_flank >= 5 and right_flank >= 5 and read.ref_start <= locus_start - left_flank and locus_end + right_flank <= read.ref_end) \
                         or (left_flank  < 5 and softclip_result is None) \
                         or (right_flank < 5 and softclip_result is None):
                         read.left_flanks[idx]  = left_flank

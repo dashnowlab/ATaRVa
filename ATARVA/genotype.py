@@ -79,7 +79,7 @@ def genotype_parser(subparsers):
 
     # Misc
     opt.add_argument('-t',   '--threads',      metavar='<INT>', type=int, default=1, help='number of threads [default: 1]')
-    opt.add_argument('-log', '--debug_mode', action='store_true', help='write debug messages to log file')
+    opt.add_argument('-log', '--debug_mode',   action='store_true', default=False, help='write debug messages to log file')
     opt.add_argument('-v',   '--version',      action='version', version=f'ATaRVa version {__version__}')
 
     if len(sys.argv) == 2 and sys.argv[1] == 'genotype':
