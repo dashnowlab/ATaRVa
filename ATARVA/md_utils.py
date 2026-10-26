@@ -1,4 +1,6 @@
 from sortedcontainers import SortedList
+from bisect import bisect_left, bisect_right
+from itertools import accumulate
 
 from ATARVA.structures import SNP
 
@@ -58,6 +60,83 @@ def update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
             else: cooper_snp_data[rpos].sub[sub_char] = {read.index}
 
 
+def update_multiple_snps(cooper_snp_data, cooper_sorted_snps, cooper_read_data, cooper_prev_reads,
+                         snp_qual_cutoff, is_haploid, is_haplotag, read, snp_positions, insertion_point,
+                         from_md=True):
+    # nothing in the original has side effects before the haploid/haplotag test,
+    # so bail out immediately
+    if is_haploid or is_haplotag:
+        return
+
+    index     = read.index
+    rd        = cooper_read_data[index]
+    no_snps   = rd.no_snps
+    read_snps = rd.snps
+    quals     = read.query_qualities        # pysam builds a new array on every access: hoist
+    seq       = read.query_sequence
+    ref_start = read.ref_start
+
+    # --- insertion offsets: prefix sums so each SNP is one bisect, not a dict scan ---
+    use_ins = from_md and bool(insertion_point)
+    if use_ins:
+        ins_keys = sorted(insertion_point)
+        ins_cum  = [0]
+        ins_cum.extend(accumulate(insertion_point[k] for k in ins_keys))
+
+    # --- merged locus ranges, built once per call ---
+    m_starts, m_ends = [], []
+    for s, e in read.loci:
+        if m_starts and s <= m_ends[-1]:
+            if e > m_ends[-1]:
+                m_ends[-1] = e
+        else:
+            m_starts.append(s); m_ends.append(e)
+
+    for pos, qpos in snp_positions:
+        if from_md:
+            rpos = ref_start + pos
+            if use_ins:
+                qpos += ins_cum[bisect_left(ins_keys, rpos)]   # sum of insertions with ins < rpos
+        else:
+            rpos = pos
+
+        if rpos in no_snps: continue
+
+        if m_starts:
+            j = bisect_right(m_starts, rpos) - 1
+            if j >= 0 and rpos <= m_ends[j]:
+                continue
+
+        sub_qval = quals[qpos]
+        if sub_qval < snp_qual_cutoff:
+            continue
+
+        sub_char = seq[qpos]
+        read_snps.add(rpos)
+
+        # drop prev reads that cover this position but lack the SNP (no copy, one bulk removal)
+        if cooper_prev_reads:
+            stale = []
+            for ri in cooper_prev_reads:
+                r = cooper_read_data[ri]
+                if r.start <= rpos <= r.end and rpos not in r.snps:
+                    stale.append(ri)
+            if stale:
+                cooper_prev_reads.difference_update(stale)
+
+        s = cooper_snp_data.get(rpos)
+        if s is None:
+            cooper_snp_data[rpos] = SNP(cov=1, sub={sub_char: {index}}, qual={index: sub_qval})
+            cooper_sorted_snps.add(rpos)
+        else:
+            s.cov += 1
+            s.qual[index] = sub_qval
+            if sub_char not in s.sub:
+                s.sub[sub_char] = {index}
+            else:
+                s.sub[sub_char].add(index)
+
+
 def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
                 snp_qual_cutoff, is_haploid, is_haplotag, read, qpos, insertion_point):
     """
@@ -80,6 +159,8 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
     deletion  = False
     replacing = False
 
+    snp_positions = []
+
     for i in read.md_tag:
 
         if deletion:
@@ -91,8 +172,7 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
         if i.isnumeric():
             sub_base += i
             if sub_char != '':
-                update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
-                            snp_qual_cutoff, is_haploid, is_haplotag, read, pos, qpos, insertion_point, True)
+                snp_positions.append((pos, qpos))
                 replacing = False
                 qpos+=1
                 sub_char = ''
@@ -105,9 +185,8 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
                 pos = base - 1
                 qpos+=int(sub_base)
             else:
-                base+=1
-                update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
-                            snp_qual_cutoff, is_haploid, is_haplotag, read, pos, qpos, insertion_point, True)
+                base += 1
+                snp_positions.append((pos, qpos))
                 pos = base - 1
                 qpos+=1
                 sub_char = ''
@@ -115,14 +194,12 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
             sub_base = ''
             sub_char += i
 
-
         else: #i == '^':
             deletion = True
 
             if replacing:
                 if sub_char != '':
-                    update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
-                                snp_qual_cutoff, is_haploid, is_haplotag, read, pos, qpos, insertion_point, True)
+                    snp_positions.append((pos, qpos))
                     replacing = False
                     qpos+=1
                     sub_char = ''
@@ -133,5 +210,7 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
 
 
     if sub_char != '':
-        update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
-                    snp_qual_cutoff, is_haploid, is_haplotag, read, pos, qpos, insertion_point, True)
+        snp_positions.append((pos, qpos))
+
+    update_multiple_snps(cooper_snp_data, cooper_sorted_snps, cooper_read_data, cooper_prev_reads,
+                         snp_qual_cutoff, is_haploid, is_haplotag, read, snp_positions, insertion_point)
