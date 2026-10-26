@@ -1,7 +1,14 @@
 ## Changelog
 
+### v0.9.4
+* Fixed read contribution thresholds for each haplogroup to match with ATaRVA v0.7.1.
+* Introduce `ref_snps` in read_data structure and optimized `record_ref_snps` function to reduce the time taken.
+* Clearing out supplementary alignments data as the reads are deleted.
+* Optimized Q value phasing using numpy array operations to reduce the time taken.
+* Threshold for sequence lengths considered for abPOA consensus sequence generation. Limit of 10kb on median length and 5kb difference between the longest and median sequences.
+
 ### v0.9.3
-* New merging strategy implemented
+* New VCF merging strategy implemented
 
 ### v0.9.2
 * Changed `--phasing-read` to `--phased-frac` to specify the minimum fraction of phased reads required for haplotyping. The default value is set to 0.6.
