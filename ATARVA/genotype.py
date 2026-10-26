@@ -62,7 +62,8 @@ def genotype_parser(subparsers):
     opt.add_argument('--snp-count',      metavar='<INT>',   type=int,   default=3,    help='number of SNPs for phasing [default: 3]')
     opt.add_argument('--snp-qual',       metavar='<INT>',   type=int,   default=20,   help='min base quality at SNP position [default: 20]')
     opt.add_argument('--phased-frac',    metavar='<FLOAT>', type=float, default=0.6,  help='min fraction  of total spanning reads that are phased [default: 0.6]')
-    opt.add_argument('--cluster-frac',   metavar='<FLOAT>', type=float, default=0.2,  help='min fraction  of total spanning reads that are phased to one cliuster [default: 0.2]')
+    opt.add_argument('--cluster-frac',   metavar='<FLOAT>', type=float, default=0.2,  help='min fraction  of total spanning reads that are phased to one cliuster'
+                                                                                           '[default: 0.2, amplicon mode: 0.1]')
     opt.add_argument('--haplotag',       metavar='<STR>',               default=None, help='haplotag for phasing e.g. HP [default: None]')
 
     # Methylation
@@ -191,7 +192,6 @@ def concat_thread_outputs(base_path, n_threads, debug=False):
                 for line in fh:
                     print(*line.strip().split('\t'), file=out_vcf, sep='\t')
             os.remove(thread_vcf)
-            os.remove(f'{hidden}_debug_{tidx}.log')
     print('Concatenation complete.', file=sys.stderr)
 
     # --- log concatenation ---
