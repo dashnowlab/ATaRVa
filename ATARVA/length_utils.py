@@ -819,7 +819,72 @@ def length_genotyper_kde(cooper, locus_key):
     c1_lengths = [filtered_alens[i] for i in c1_idx]
     c2_lengths = [filtered_alens[i] for i in c2_idx]
 
-    _assign_genotype(cooper, locus_key, locus_data,
-                     c1_idx, c2_idx, c1_lengths, c2_lengths,
-                     ( [main_read_ids[i] for i in c1_idx], [main_read_ids[i] for i in c2_idx] ),
-                     min_cluster_size = 1) # no min cluster size cutoff for the longer allele
+    cutoff = MIN_CLUSTER_FRAC * len(filtered_alens)
+    br     = False
+
+    if c1_lengths and c2_lengths:
+        def confidence_interval(data):
+            data = np.array(data)
+            ci   = np.percentile(data, [2.5, 97.5])
+            return [round(ci[0]), round(ci[1])]
+
+        def process_conditions(alen_x, alen_y):
+            nonlocal br, cutoff
+            min_val, max_val = confidence_interval(alen_y)
+            min_slide = 10 if min_val * 0.1 > 10 else min_val * 0.1  # max(min_val*0.1, 10)#; maximum length slide is 10
+            max_slide = 10 if max_val * 0.1 > 10 else max_val * 0.1  # max(max_val*0.1, 10)#; maximum length slide is 10
+            min_bound = min_val - min_slide
+            max_bound = max_val + max_slide
+
+            for min_al in alen_x:
+                if min_bound <= min_al <= max_bound:
+                    br = True; break
+
+            if not br:
+                cutoff = min(5, cutoff)
+
+        if len(c1_lengths) < cutoff and len(c2_lengths) >= cutoff:
+            process_conditions(c1_lengths, c2_lengths)
+                               
+        elif len(c2_lengths) < cutoff and len(c1_lengths) >= cutoff:
+            process_conditions(c2_lengths, c1_lengths)
+
+    cutoff = int(cutoff)
+
+    if cooper.haploid:
+        cluster_len = [len(c1_lengths), len(c2_lengths)]
+        cidx        = cluster_len.index(max(cluster_len))
+        if cluster_len[cidx] >= cutoff:
+            major_alens = c1_idx if cidx == 0 else c2_idx # major allele cluster
+            major_reads = c1_lengths if cidx == 0 else c2_lengths # major allele lengths
+            locus_data.hap_read_sets = (major_reads, [])
+            locus_data.hap_alen_sets = (major_alens, None)
+
+        else:
+            locus_data.hap_read_sets = (locus_data.reads, [])
+            locus_data.hap_alen_sets = ([locus_data.read_alens[rid][0] for rid in locus_data.read_alens], [])
+            locus_data.is_genotyped = True
+            homozygous_call(cooper, locus_key)
+        
+    elif len(c1_lengths) >= cutoff and len(c2_lengths) >= cutoff:
+        locus_data.hap_read_sets = ( [main_read_ids[i] for i in c1_idx], [main_read_ids[i] for i in c2_idx] )
+        locus_data.hap_alen_sets = (c1_lengths, c2_lengths)
+        locus_data.is_genotyped  = True
+        heterozygous_call(cooper, locus_key)
+    
+    elif len(c1_lengths) >= cutoff:
+        locus_data.hap_read_sets = ([main_read_ids[i] for i in c1_idx], [main_read_ids[i] for i in c1_idx])
+        locus_data.hap_alen_sets = (c1_lengths, c1_lengths)
+        locus_data.is_genotyped = True
+        homozygous_call(cooper, locus_key)
+
+    elif len(c2_lengths) >= cutoff:
+        locus_data.hap_read_sets = ([main_read_ids[i] for i in c2_idx], [main_read_ids[i] for i in c2_idx])
+        locus_data.hap_alen_sets = (c2_lengths, c2_lengths)
+        locus_data.is_genotyped = True
+        homozygous_call(cooper, locus_key)
+
+    # _assign_genotype(cooper, locus_key, locus_data,
+    #                  c1_idx, c2_idx, c1_lengths, c2_lengths,
+    #                  ( [main_read_ids[i] for i in c1_idx], [main_read_ids[i] for i in c2_idx] ),
+    #                  min_cluster_size = 1) # no min cluster size cutoff for the longer allele
