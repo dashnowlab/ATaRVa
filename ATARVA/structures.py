@@ -45,7 +45,9 @@ class LocusInfo:
 class ReadInfo:
     start:       int   = 0
     end:         int   = 0
+    name:        str   = ''
     snps:        set   = field(default_factory=set)
+    ref_snps:    set   = field(default_factory=set)
     dels:        set   = field(default_factory=list)
     no_snps:     set   = field(default_factory=set)
     methylation: list  = field(default_factory=list)
