@@ -44,26 +44,6 @@ def make_checker(ranges):
     return in_ranges
 
 
-def outside_locus(loci_coords, left_flanks, right_flanks, rpos):
-    """
-    Check if the position is outside all locus ranges (sorted coords)
-
-    :param loci_coords: list of locus coordinates
-    :param rpos: position to be checked
-    :return: True if the position is outside all locus ranges, False otherwise
-    """
-
-    left_flanks  = [0 if lf < 0 else lf for lf in left_flanks]
-    right_flanks = [0 if rf < 0 else rf for rf in right_flanks]
-    coords = [(loci_coords[i][0] + left_flanks[i], loci_coords[i][1] - right_flanks[i]) for i in range(len(loci_coords))]
-
-    # starts = [c[0] for c in coords]
-    # idx    = bisect.bisect_right(starts, rpos) - 1
-    # return idx < 0 or rpos > coords[idx][1]
-    checker = make_checker(coords)
-    return not checker(rpos)
-
-
 def parse_cigar(cooper, read):
     """
     parse the cigar to identify loci specific variations and the SNPs
@@ -157,13 +137,14 @@ def parse_cigar(cooper, read):
             if (not has_MD) and (not haploid) and (not is_haplotag):
                 ref_sequence   = reference.fetch(chrom, rpos, rpos + match_len)
                 query_sequence = qseq[qpos:qpos + match_len]
+                checker = make_checker(read.loci)
 
                 assert len(ref_sequence) == len(query_sequence), \
                     "Error: fetching sequences based on CIGAR. Please check cigar formats"
 
                 substitutions = subex(ref_sequence, query_sequence)
                 for sub_pos in substitutions:
-                    if not outside_locus(read.loci_coords, read.left_flanks, read.right_flanks, rpos + sub_pos):
+                    if not checker(rpos + sub_pos):
                         continue
                     sub_nuc  = query_sequence[sub_pos]
                     sub_qual = qquals[qpos + sub_pos]
@@ -193,7 +174,8 @@ def parse_cigar(cooper, read):
         elif cigar[0] == 8: # substitution (difference)
             has_subop = True
             match_len = cigar[1]
-            if (not haploid) and outside_locus(read.loci_coords, rpos) and (not is_haplotag):
+            checker = make_checker(read.loci)
+            if (not haploid) and checker(rpos) and (not is_haplotag):
                 sub_nuc  = qseq[qpos]
                 sub_qual = qquals[qpos]
                 if sub_qual >= snp_qual_cutoff:
