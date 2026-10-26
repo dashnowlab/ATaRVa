@@ -280,8 +280,8 @@ def write_heterozygous_call(cooper, locus_key):
 
             ALT = allele
             if ref_index == 1:
-                meth_prob = meth_prob[::-1] # reverse the meth_prob to keep the order consistent with GT
-                meth_reads = meth_reads[::-1]
+                meth_prob   = meth_prob[::-1] # reverse the meth_prob to keep the order consistent with GT
+                meth_reads  = meth_reads[::-1]
                 meth_viztag = meth_viztag[::-1]
             SD = f'{len(locus_data.hap_read_sets[0])},{len(locus_data.hap_read_sets[1])}'
             allele_range = f'{locus_data.gt_arange[0]},{locus_data.gt_arange[1]}'
