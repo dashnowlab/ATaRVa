@@ -1,4 +1,4 @@
-import bisect
+from bisect import bisect_left, bisect_right
 
 from ATARVA.realignment import stripSW, Inputs
 from ATARVA.vcf_writer  import write_fail_call
@@ -53,25 +53,47 @@ def record_ref_snps(cooper, new_reads, locus_start, locus_end):
     :return: None (updates the cooper.cooper_snp_data in place)
     """
 
-    snp_dist = cooper.args.snp_dist
+    snp_dist  = cooper.args.snp_dist
     snp_start = locus_start - snp_dist
     snp_end   = locus_end + snp_dist
 
+    # SNPs inside the locus window: computed once, not once per read
+    sorted_snps = cooper.cooper_sorted_snps
+    window      = sorted_snps[bisect_left(sorted_snps, snp_start):
+                              bisect_right(sorted_snps, snp_end)]
+    if not window:
+        return
+
+    snp_data = cooper.cooper_snp_data
+    reads    = cooper.cooper_read_data
+
     for read_index in new_reads:
+        read = reads[read_index]
 
-        read = cooper.cooper_read_data[read_index]
+        # only SNPs overlapping this read: O(log n) instead of a linear scan
+        candidates = [pos for pos in window[bisect_left(window, read.start):
+                            bisect_right(window, read.end)] if pos not in read.ref_snps]
+        if not candidates:
+            continue
 
-        for pos in cooper.cooper_sorted_snps:
-            # if snp not in range skip
-            if not (snp_start <= pos <= snp_end): continue
+        alt_snps = read.snps
+        dels = read.dels
 
-            if pos < read.start: continue
-            if pos > read.end: break
-
-            # if a position has not ALT SNP and is not deleted in the read record it as reference
-            if (pos not in read.snps) and (bisect.bisect(read.dels, pos) % 2 == 0): # and (pos not in read.no_snps):
-                cooper.cooper_snp_data[pos].ref.add(read_index)
-                cooper.cooper_snp_data[pos].cov += 1
+        if dels:
+            for pos in candidates:
+                if pos not in alt_snps and bisect_right(dels, pos) % 2 == 0:
+                    d = snp_data[pos]
+                    d.ref.add(read_index)
+                    d.cov += 1
+                    read.ref_snps.add(pos)
+        else:
+            # no deletions: skip the bisect entirely
+            for pos in candidates:
+                if pos not in alt_snps:
+                    d = snp_data[pos]
+                    d.ref.add(read_index)
+                    d.cov += 1
+                    read.ref_snps.add(pos)
 
 
 def inrepeat_ins(near_by_loci, ins_rpos, sorted_ins_rpos):
@@ -195,7 +217,7 @@ def process_flank_insertions(cooper, flank_insertions, ref_allele, ref_length, q
             for r in cooper.tbx.fetch(locus.chrom, ins_rpos - cooper.args.flank, ins_rpos + cooper.args.flank)
         ]
 
-        check_insfit = _check_insertion_fit(cooper, ins_neighbors, insert, locus)    
+        check_insfit = _check_insertion_fit(cooper, ins_neighbors, insert, locus)
         if check_insfit:
             ILR  += 1
             adj_pos = ins_qs if is_left else ins_qe
