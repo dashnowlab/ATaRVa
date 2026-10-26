@@ -1,4 +1,4 @@
-
+import numpy as np
 
 def haplocluster_reads(cooper, locus_key):
     """
@@ -233,170 +233,156 @@ def merge_snpreadsets(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps)
     return min_snp_pos
 
 
-def score_cluster_membership(cluster, read_idx, read_indices, score_matrix):
+def _cluster_reads(score, num_reads):
     """
-    Function to score the membership of a read in a cluster based on its supporting reads.
-
-    Args:
-        cluster (set): Set of read indices in the cluster.
-        read_idx (int): Index of the read to be scored.
-        read_indices (set): Set of all read indices.
-        score_matrix (list): List of scores for each read pair.
-
-    Returns:
-        int: Score indicating the membership of the read in the cluster.
+    Greedy 2-way clustering over read pairs ordered by most negative score.
+    Works on matrix indices; returns (cluster1_indices, cluster2_indices).
+    
+    :param score:      pairwise score matrix (numpy array)
+    :param num_reads:  number of reads (size of score matrix)
+    :return:           (cluster1_indices, cluster2_indices)
     """
-    scores = []
-    for read in cluster:
-        i = read_indices.index(read)
-        j = read_indices.index(read_idx)
-        index = (i * len(read_indices)) + j
-        scores.append(score_matrix[index])
-    return sum(scores)/len(scores) if scores else 0
+    flat = score.ravel()
+    neg = np.flatnonzero(flat < 0)
+    order = neg[np.argsort(flat[neg], kind='stable')]
+    rows = (order // num_reads).tolist()
+    cols = (order % num_reads).tolist()
+
+    cluster1, cluster2, phased = [], [], set()
+    sum1 = np.zeros(num_reads)
+    sum2 = np.zeros(num_reads)
+
+    def place(j):
+        s1 = sum1[j] / len(cluster1) if cluster1 else 0.0
+        s2 = sum2[j] / len(cluster2) if cluster2 else 0.0
+        if s1 < s2:
+            cluster2.append(j); sum2.__iadd__(score[j])
+        elif s1 > s2:
+            cluster1.append(j); sum1.__iadd__(score[j])
+        phased.add(j)
+
+    for itr, (ia, ib) in enumerate(zip(rows, cols)):
+        if ia in phased and ib in phased:
+            continue
+        if itr == 0:
+            cluster1.append(ia); sum1 += score[ia]
+            cluster2.append(ib); sum2 += score[ib]
+            phased.update((ia, ib))
+            continue
+        if ib not in phased: place(ib)
+        if ia not in phased: place(ia)
+        if len(phased) == num_reads:
+            break
+
+    for j in range(num_reads):
+        if j not in phased:
+            place(j)
+
+    return cluster1, cluster2
 
 
 def qvalue_phasing(cooper, locus, locus_data, sig_snp_data, ordered_sig_snps):
     """
-    Function to cluster the reads based on SNPs and their supporting reads.
-
-    Args:
-        snp_allelereads (dict): Dictionary containing SNP positions and their alleles with supporting reads.
-        coverage_sorted_snps (list): List of SNP positions sorted by coverage.
-        read_indices (set): Set of read indices that support the SNPs.
-        args (Namespace): Command line arguments containing parameters like snpC, snpR, phasingR, snpQ.
-
-    Returns:
-        list: A list containing the final haplotypes, minimum SNP position, skip point,
+    Phase reads into two haplotype clusters using SNP allele information and quality values.
+    
+    :param cooper:          Cooper instance
+    :param locus:           Locus instance
+    :param locus_data:      Locus data
+    :param sig_snp_data:    Significant SNP data
+    :param ordered_sig_snps: Ordered significant SNPs
+    :return:                -1 if phasing fails, otherwise the number of phased reads
     """
-    del_positions = []
+    args = cooper.args
+
+    # --- drop low-support alleles, then SNPs left with <2 alleles ---
+    del_positions = set()
     for pos in ordered_sig_snps:
-        remove_alts = []
-        for alt, reads in sig_snp_data[pos]['alleles'].items():
-            if len(reads) < 0.2 * sig_snp_data[pos]['cov']:
-                remove_alts.append(alt)
-        for alt in remove_alts:
-            del sig_snp_data[pos]['alleles'][alt]
-            if alt in sig_snp_data[pos]['qual']:
-                del sig_snp_data[pos]['qual'][alt]
-        if len(sig_snp_data[pos]['alleles']) < 2:
-            del_positions.append(pos)
-    for pos in del_positions:
-        del sig_snp_data[pos]
-        ordered_sig_snps.remove(pos)
+        d = sig_snp_data[pos]
+        alleles, qual = d['alleles'], d['qual']
+        thr = 0.2 * d['cov']
+        for alt in [a for a, reads in alleles.items() if len(reads) < thr]:
+            del alleles[alt]
+            qual.pop(alt, None)
+        if len(alleles) < 2:
+            del_positions.add(pos)
+    if del_positions:
+        for pos in del_positions:
+            del sig_snp_data[pos]
+        ordered_sig_snps[:] = [p for p in ordered_sig_snps if p not in del_positions]
 
     if not ordered_sig_snps: return -1
+    if args.amplicon and len(ordered_sig_snps) < 3: return -1
 
-    if cooper.args.amplicon and len(ordered_sig_snps) < 3: return -1
-
+    depth = locus_data.depth
     if len(ordered_sig_snps) == 1:
-        max_alt_cov = max(len(reads) for reads in sig_snp_data[ordered_sig_snps[0]]['alleles'].values())
-        if max_alt_cov > 0.7 * locus_data.depth or max_alt_cov < 0.3 * locus_data.depth:
+        max_alt_cov = max(len(r) for r in sig_snp_data[ordered_sig_snps[0]]['alleles'].values())
+        if max_alt_cov > 0.7 * depth or max_alt_cov < 0.3 * depth:
             return -1
 
-    ordered_sig_snps = ordered_sig_snps[:cooper.args.snp_count]
+    ordered_sig_snps = ordered_sig_snps[:args.snp_count]
     min_snp_pos  = min(ordered_sig_snps)
     sorted_reads = sorted(locus_data.reads)
+    num_reads    = len(sorted_reads)
 
-    # --- compute quality values for top SNPs ---
-    # snp_quals = [max(list([max(x) for x in sig_snp_data[pos]['qual'].values()])) for pos in ordered_sig_snps]
-    snp_quals = [max(list([max(list(x.values())) for x in sig_snp_data[pos]['qual'].values()])) for pos in ordered_sig_snps]
-    snp_quals = ','.join(str(int(q)) for q in snp_quals)
+    snp_quals = ','.join(
+        str(int(max(max(x.values()) for x in sig_snp_data[pos]['qual'].values())))
+        for pos in ordered_sig_snps
+    )
 
-    score_matrix = []
-    for i, read_a in enumerate(sorted_reads):
-        for j, read_b in enumerate(sorted_reads):
-            if read_a == read_b: score_matrix.append(0); continue
-            if j < i: score_matrix.append(score_matrix[j*len(sorted_reads) + i]); continue
+    # --- pairwise score matrix (vectorized) ---
+    read_idx   = {r: i for i, r in enumerate(sorted_reads)}
+    mean_quals = None
+    score = np.zeros((num_reads, num_reads), dtype=np.float64)
 
-            score = 0
-            for snp_pos in ordered_sig_snps:
-                allele_a = None; qual_a = None
-                allele_b = None; qual_b = None
-                for allele in sig_snp_data[snp_pos]['alleles']:
-                    if read_a in sig_snp_data[snp_pos]['alleles'][allele]:
-                        allele_a = allele
-                        if allele != 'r': qual_a = sig_snp_data[snp_pos]['qual'][allele][read_a]
-                        else: qual_a = cooper.cooper_read_data[read_a].mean_qual
-                    if read_b in sig_snp_data[snp_pos]['alleles'][allele]:
-                        allele_b = allele
-                        if allele != 'r': qual_b = sig_snp_data[snp_pos]['qual'][allele][read_b]
-                        else: qual_b = cooper.cooper_read_data[read_b].mean_qual
-                if allele_a is None or allele_b is None:
-                    pass
-                elif allele_a == allele_b:
-                    pass
-                elif qual_a < cooper.args.snp_qual or qual_b < cooper.args.snp_qual:
-                    pass
-                else:
-                    score -= (qual_a + qual_b)
-            score_matrix.append(score)
+    for snp_pos in ordered_sig_snps:
+        d = sig_snp_data[snp_pos]
+        codes = np.full(num_reads, -1, dtype=np.int32)
+        quals = np.zeros(num_reads, dtype=np.float64)
+        for code, (allele, reads) in enumerate(d['alleles'].items()):
+            if allele == 'r':
+                if mean_quals is None:
+                    mean_quals = np.array([cooper.cooper_read_data[r].mean_qual for r in sorted_reads], dtype=np.float64)
+                for r in reads:
+                    i = read_idx.get(r)
+                    if i is not None:
+                        codes[i] = code; quals[i] = mean_quals[i]
+            else:
+                aq = d['qual'][allele]
+                for r in reads:
+                    i = read_idx.get(r)
+                    if i is not None:
+                        codes[i] = code; quals[i] = aq[r]
 
-    sorted_indices = sorted(range(len(score_matrix)), key=score_matrix.__getitem__)
+        valid = np.flatnonzero((codes >= 0) & (quals >= args.snp_qual))
+        if valid.size < 2: continue
+        cv, qv = codes[valid], quals[valid]
+        score[np.ix_(valid, valid)] -= (qv[:, None] + qv[None, :]) * (cv[:, None] != cv[None, :])
 
-    num_reads = len(sorted_reads)
-    cluster1 = set()
-    cluster2 = set()
-    phased_reads = set()
-    for itr, idx in enumerate(sorted_indices):
-        if score_matrix[idx] == 0: break
-        read_a = sorted_reads[idx // num_reads]
-        read_b = sorted_reads[idx % num_reads]
-
-        if read_a in phased_reads and read_b in phased_reads: continue
-
-        if itr == 0:
-            cluster1.add(read_a)
-            cluster2.add(read_b)
-            phased_reads.add(read_a); phased_reads.add(read_b)
-            continue
-        if read_b not in phased_reads:
-            score_b1 = score_cluster_membership(cluster1, read_b, sorted_reads, score_matrix)
-            score_b2 = score_cluster_membership(cluster2, read_b, sorted_reads, score_matrix)
-            if   score_b1 < score_b2:
-                cluster2.add(read_b)
-            elif score_b1 > score_b2:
-                cluster1.add(read_b)
-            phased_reads.add(read_b)
-        if read_a not in phased_reads:
-            score_a1 = score_cluster_membership(cluster1, read_a, sorted_reads, score_matrix)
-            score_a2 = score_cluster_membership(cluster2, read_a, sorted_reads, score_matrix)
-            if   score_a1 < score_a2:
-                cluster2.add(read_a)
-            elif score_a1 > score_a2:
-                cluster1.add(read_a)
-            phased_reads.add(read_a)
-
-        if len(phased_reads) == len(sorted_reads):
-            break
-
-    for read_a in sorted_reads:
-        if read_a not in phased_reads:
-            score_a1 = score_cluster_membership(cluster1, read_a, sorted_reads, score_matrix)
-            score_a2 = score_cluster_membership(cluster2, read_a, sorted_reads, score_matrix)
-            if   score_a1 < score_a2: cluster2.add(read_a)
-            elif score_a1 > score_a2: cluster1.add(read_a)
-            phased_reads.add(read_a)
+    # --- clustering (replaces the old loops and score_cluster_membership) ---
+    c1_idx, c2_idx = _cluster_reads(score, num_reads)
+    cluster1 = [sorted_reads[i] for i in c1_idx]
+    cluster2 = [sorted_reads[i] for i in c2_idx]
+    n1, n2 = len(cluster1), len(cluster2)
+    total_phased = n1 + n2
 
     # --- validate phasing coverage ---
-    total_phased = len(cluster1) + len(cluster2)
-
-    if cooper.args.amplicon and (locus_data.depth - total_phased > 10 or total_phased < 0.9 * locus_data.depth):
-        locus_data.is_genotyped    = False
-        locus_data.skip_code     = 1
+    if args.amplicon and (depth - total_phased > 10 or total_phased < 0.9 * depth):
+        locus_data.is_genotyped = False
+        locus_data.skip_code    = 1
         return min_snp_pos
 
-    if total_phased >= cooper.args.phased_frac * locus_data.depth and \
-       len(cluster1) >= cooper.args.cluster_frac*locus_data.depth and len(cluster2) >= cooper.args.cluster_frac*locus_data.depth:
-        locus_data.hap_read_sets      = (list(cluster1), list(cluster2))
-        locus_data.hap_alen_sets      = ([locus_data.read_alens[ridx][0] for ridx in cluster1], [locus_data.read_alens[ridx][0] for ridx in cluster2])
-        locus_data.is_genotyped       = True
-        locus_data.phase_mode         = 'snp'
-        locus_data.hap_category       = 0
-        locus_data.n_phasing_snps     = len(sig_snp_data)
-        locus_data.phasing_snp_quals  = snp_quals
-
+    if total_phased >= args.phased_frac * depth and \
+       n1 >= args.cluster_frac * depth and n2 >= args.cluster_frac * depth:
+        alens = locus_data.read_alens
+        locus_data.hap_read_sets     = (cluster1, cluster2)
+        locus_data.hap_alen_sets     = ([alens[r][0] for r in cluster1], [alens[r][0] for r in cluster2])
+        locus_data.is_genotyped      = True
+        locus_data.phase_mode        = 'snp'
+        locus_data.hap_category      = 0
+        locus_data.n_phasing_snps    = len(sig_snp_data)
+        locus_data.phasing_snp_quals = snp_quals
         return min_snp_pos
 
-    locus_data.is_genotyped    = False
-    locus_data.skip_code     = 1
+    locus_data.is_genotyped = False
+    locus_data.skip_code    = 1
     return min_snp_pos
