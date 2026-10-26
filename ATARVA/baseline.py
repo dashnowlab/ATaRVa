@@ -5,7 +5,7 @@ import sys, os, logging
 from pathlib import Path
 from tqdm import tqdm
 from sortedcontainers import SortedList
-from collections import deque, defaultdict
+from collections import defaultdict
 
 from ATARVA.decompose import motif_decomposition
 from ATARVA.structures        import ReadLocusInfo, LocusInfo, ReadInfo, LocusVariation, ExtendedRead
@@ -175,14 +175,15 @@ class Cooper:
         self.cooper_read_data        = {}
         self.cooper_loci_data        = {}
         self.cooper_loci_info        = {}
-        self.cooper_loci_ends        = deque()
-        self.cooper_loci_keys        = deque()
-        self.cooper_read_ends        = deque()
-        self.cooper_read_indices     = deque()
+        self.cooper_loci_ends        = []
+        self.cooper_loci_keys        = []
+        self.cooper_read_ends        = []
+        self.cooper_read_indices     = []
         self.prev_reads              = set()
         self.cooper_sorted_snps      = SortedList()
         self.cooper_insert_positions = defaultdict(set)
         self.cooper_del_positions    = defaultdict(set)
+        self.supp_reads              = {}
 
     # --- read processing ---
     def cooper_readmode(self, region_range: tuple, cidx: int):
@@ -234,8 +235,8 @@ class Cooper:
                         break
                     if self.cooper_read_indices[0] in loci_rindices: break
 
-                    read_end = self.cooper_read_ends.popleft()
-                    rindex   = self.cooper_read_indices.popleft()
+                    read_end = self.cooper_read_ends.pop(0)
+                    rindex   = self.cooper_read_indices.pop(0)
                     if rindex in self.cooper_read_data:
                         for pos in self.cooper_read_data[rindex].snps:
                             if pos in self.cooper_snp_data:
@@ -243,7 +244,16 @@ class Cooper:
                                 if self.cooper_snp_data[pos].cov == 0:
                                     del self.cooper_snp_data[pos]
                                     self.cooper_sorted_snps.remove(pos)
+                        rname = self.cooper_read_data[rindex].name
                         del self.cooper_read_data[rindex]
+                        if rname in self.supp_reads:
+                            remove_supp = True
+                            for sa_read in self.supp_reads[rname][0]:
+                                if sa_read.reference_end > fetch_start - DROP_DISTANCE:
+                                    remove_supp = False
+                                    break
+                            if remove_supp:
+                                del self.supp_reads[rname]
                         if rindex in self.cooper_insert_positions:
                             del self.cooper_insert_positions[rindex]
                         self.prev_reads.discard(rindex)
@@ -316,10 +326,10 @@ class Cooper:
                                                     del_softclip_idx.add(idx)
                                                 if downstream[2] < end_softclip or downstream[3] < end_softclip:
                                                     del_softclip_idx.add(idx)
-                                        softclip_loci['keys'] = [key for idx, key in enumerate(softclip_loci['keys']) if idx not in del_softclip_idx]
-                                        softclip_loci['loci'] = [locus for idx, locus in enumerate(softclip_loci['loci']) if idx not in del_softclip_idx]
+                                        softclip_loci['keys']   = [key for   idx, key   in enumerate(softclip_loci['keys'])   if idx not in del_softclip_idx]
+                                        softclip_loci['loci']   = [locus for idx, locus in enumerate(softclip_loci['loci'])   if idx not in del_softclip_idx]
                                         softclip_loci['coords'] = [coord for idx, coord in enumerate(softclip_loci['coords']) if idx not in del_softclip_idx]
-                                        softclip_loci['flags'] = [flag for idx, flag in enumerate(softclip_loci['flags']) if idx not in del_softclip_idx]
+                                        softclip_loci['flags']  = [flag for  idx, flag  in enumerate(softclip_loci['flags'])  if idx not in del_softclip_idx]
 
                     if softclip_mode and (locus_start - self.args.flank < read.ref_start or locus_end + self.args.flank > read.ref_end) and \
                         (start_softclip < DROP_DISTANCE and end_softclip < DROP_DISTANCE):
@@ -371,7 +381,7 @@ class Cooper:
                         right_flank = min(self.args.flank, clamp_zero(read.ref_end  - locus_end))
                         read.left_flanks[idx]  = left_flank
                         read.right_flanks[idx] = right_flank
-                        read.loci_coords[idx] = (locus_start - left_flank, locus_end + right_flank)
+                        read.loci_coords[idx]  = (locus_start - left_flank, locus_end + right_flank)
 
                 # locations which were considered for softclip processing but failed the flank order check are removed from the read's loci list
                 del_locikeys = []
@@ -402,10 +412,12 @@ class Cooper:
 
                 read_required = True
                 for key in read.loci_keys:
-                    if self.cooper_loci_data[key].depth >= self.args.max_reads and self.cooper_loci_data[key].min_read_qual >= read.mean_qual:
-                        read_required = False
-                    else:
+                    if self.cooper_loci_data[key].depth < self.args.max_reads or \
+                        (self.cooper_loci_data[key].min_read_qual < 20 and  read.mean_qual >= 20) or \
+                        (read.mean_qual > 20 and (10**(read.mean_qual/10) - 10**(self.cooper_loci_data[key].min_read_qual/10))) >= 500:
                         read_required = True
+                    else:
+                        read_required = False
                         break
                 # if all loci have enough supporting reads with highest quality; this read is not processed
                 if not read_required: continue
@@ -423,6 +435,7 @@ class Cooper:
                 self.cooper_read_data[read.index] = ReadInfo(
                     start       = read.ref_start,
                     end         = read.ref_end,
+                    name        = read.query_name,
                     snps        = set(),
                     dels        = [],
                     methylation = [],
@@ -710,8 +723,8 @@ class Cooper:
 
         :return: 1 if locus was successfully genotyped, 0 otherwise
         """
-        self.cooper_loci_ends.popleft()
-        locus_key   = self.cooper_loci_keys.popleft()
+        self.cooper_loci_ends.pop(0)
+        locus_key   = self.cooper_loci_keys.pop(0)
         locus_data  = self.cooper_loci_data[locus_key]
         locus       = self.cooper_loci_info[locus_key]
 
