@@ -3,6 +3,11 @@ import statistics as stats
 from collections import Counter
 from itertools import chain
 
+import random
+
+MAX_POA_LEN   = 10000    # POA memory grows ~quadratically with length; tune on your data
+MAX_POA_READS = 50
+
 def seq_organiser(seqs):
     """
     organises the sequences in descending order of their lengths and returns a flat list of sequences.
@@ -61,21 +66,21 @@ def consensus_seq_poa(seqs, amplicon):
     param amplicon: boolean indicating if the sequences are from an amplicon
     return: consensus sequence
     """
+    cons_algrm = 'MF' if len(seqs) < 7 else 'HB'
 
-    if len(seqs)<7:
-        cons_algrm='MF'
-    else:
-        cons_algrm='HB'
+    median_seq = stats.median_high(seqs)             # was: len(median_high(seqs))
+    median_len = len(median_seq)
+    lens       = [len(s) for s in seqs]
+    max_len    = max(lens)
 
-    median_len = len(stats.median_high(seqs))
-    if median_len > 10000:
-        fseqs = [seq for seq in seqs if len(seq) == median_len]
+    if median_len > MAX_POA_LEN or max_len - median_len > MAX_POA_LEN * 0.5:
+        # cheap path: column-wise majority over reads of the modal-ish length
+        fseqs = [s for s, l in zip(seqs, lens) if l == median_len]
         return ''.join(Counter(bases).most_common(1)[0][0] for bases in zip(*fseqs))
 
-    if not amplicon:
-        sorted_seqs = seq_organiser(seqs)
-    else:
-        sorted_seqs = seq_alter_median(seqs)
-    abpoa  = pa.msa_aligner(cons_algrm=cons_algrm)
-    result = abpoa.msa(sorted_seqs, out_cons=True, out_msa=False)
+    if len(seqs) > MAX_POA_READS:                    # cap depth
+        seqs = random.Random(0).sample(seqs, MAX_POA_READS)   # fixed seed keeps runs reproducible
+
+    sorted_seqs = seq_organiser(seqs) if not amplicon else seq_alter_median(seqs)
+    result = pa.msa_aligner(cons_algrm=cons_algrm).msa(sorted_seqs, out_cons=True, out_msa=False)
     return result.cons_seq[0]
