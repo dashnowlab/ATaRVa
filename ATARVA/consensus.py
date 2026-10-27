@@ -1,11 +1,16 @@
-import pyabpoa as pa
-import statistics as stats
 from collections import Counter
-from itertools import chain
+from itertools   import chain
+from hdbscan     import HDBSCAN
 
 import random
+import warnings
+import pyabpoa    as pa
+import statistics as stats
+import numpy      as np
 
-MAX_POA_LEN   = 10000    # POA memory grows ~quadratically with length; tune on your data
+
+
+MAX_POA_LEN   = 7000    # POA memory grows ~quadratically with length; tune on your data
 MAX_POA_READS = 50
 
 def seq_organiser(seqs):
@@ -66,20 +71,39 @@ def consensus_seq_poa(seqs, amplicon):
     param amplicon: boolean indicating if the sequences are from an amplicon
     return: consensus sequence
     """
-    cons_algrm = 'MF' if len(seqs) < 7 else 'HB'
 
+    seq_lens   = [len(s) for s in seqs]
+    MIN_READS  = 2
+    MIN_CLUSTER_FRAC = 0.7
+
+    if len(seqs) == 1:
+        return seqs[0]
+
+    if min(seq_lens) == 0:
+        print(f"Warning: Found {seq_lens.count(0)} empty sequences in the input. Ignoring them for consensus generation.")
+
+    clusterer = HDBSCAN(
+                    min_cluster_size     = max(MIN_READS, int(MIN_CLUSTER_FRAC * len(seq_lens))),
+                    allow_single_cluster = True
+                )
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning, module="hdbscan")
+        outlier_scores = clusterer.fit(np.array(seq_lens).reshape(-1, 1)).outlier_scores_
+    filtered_seqs = [seq for seq, score in zip(seqs, outlier_scores) if score <= 0.9]
+
+    seqs = filtered_seqs if len(filtered_seqs) >= MIN_READS else seqs
+    del filtered_seqs
+
+    cons_algrm = 'MF' if len(seqs) < 7 else 'HB'
+    seq_lens = [len(s) for s in seqs]
     median_seq = stats.median_high(seqs)             # was: len(median_high(seqs))
     median_len = len(median_seq)
-    lens       = [len(s) for s in seqs]
-    max_len    = max(lens)
+    max_len    = max(seq_lens)
 
-    if median_len > MAX_POA_LEN or max_len - median_len > MAX_POA_LEN * 0.5:
+    if max_len > MAX_POA_LEN:                          # cap length
         # cheap path: column-wise majority over reads of the modal-ish length
-        fseqs = [s for s, l in zip(seqs, lens) if l == median_len]
+        fseqs = [s for s, l in zip(seqs, seq_lens) if l == median_len]
         return ''.join(Counter(bases).most_common(1)[0][0] for bases in zip(*fseqs))
-
-    if len(seqs) > MAX_POA_READS:                    # cap depth
-        seqs = random.Random(0).sample(seqs, MAX_POA_READS)   # fixed seed keeps runs reproducible
 
     sorted_seqs = seq_organiser(seqs) if not amplicon else seq_alter_median(seqs)
     result = pa.msa_aligner(cons_algrm=cons_algrm).msa(sorted_seqs, out_cons=True, out_msa=False)

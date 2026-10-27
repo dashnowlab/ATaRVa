@@ -6,7 +6,7 @@ from ATARVA.structures import SNP
 
 
 def update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
-                snp_qual_cutoff, is_haploid, is_haplotag, read, pos, qpos, insertion_point, from_md=True):
+                snp_qual_cutoff, is_haploid, read, pos, qpos, insertion_point, from_md=True):
     """
     update SNP information in cooper.cooper_snp_data and also for this read in read.snps
 
@@ -39,7 +39,7 @@ def update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
 
     sub_qval = read.query_qualities[qpos]
 
-    if sub_qval >= snp_qual_cutoff and (not is_haploid) and (not is_haplotag):
+    if sub_qval >= snp_qual_cutoff and (not is_haploid):
         sub_char = read.query_sequence[qpos]
         cooper_read_data[read.index].snps.add(rpos)
 
@@ -61,12 +61,9 @@ def update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
 
 
 def update_multiple_snps(cooper_snp_data, cooper_sorted_snps, cooper_read_data, cooper_prev_reads,
-                         snp_qual_cutoff, is_haploid, is_haplotag, read, snp_positions, insertion_point,
+                         snp_qual_cutoff, is_haploid, read, snp_positions, insertion_point,
                          from_md=True):
-    # nothing in the original has side effects before the haploid/haplotag test,
-    # so bail out immediately
-    if is_haploid or is_haplotag:
-        return
+    if is_haploid: return
 
     index     = read.index
     rd        = cooper_read_data[index]
@@ -138,7 +135,7 @@ def update_multiple_snps(cooper_snp_data, cooper_sorted_snps, cooper_read_data, 
 
 
 def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
-                snp_qual_cutoff, is_haploid, is_haplotag, read, qpos, insertion_point):
+                snp_qual_cutoff, is_haploid, read, qpos, insertion_point):
     """
     parse the MD tag of a read to identify SNP positions and update cooper.cooper_snp_data and read.snps accordingly
     :param cooper:             cooper object
@@ -213,4 +210,4 @@ def parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_lo
         snp_positions.append((pos, qpos))
 
     update_multiple_snps(cooper_snp_data, cooper_sorted_snps, cooper_read_data, cooper_prev_reads,
-                         snp_qual_cutoff, is_haploid, is_haplotag, read, snp_positions, insertion_point)
+                         snp_qual_cutoff, is_haploid, read, snp_positions, insertion_point)

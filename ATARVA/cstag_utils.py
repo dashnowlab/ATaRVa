@@ -34,7 +34,6 @@ def parse_cstag(cooper, read):
     haploid              = cooper.haploid
     snp_data             = cooper.cooper_snp_data
     cooper_prev_reads    = cooper.prev_reads
-    is_haplotag          = cooper.args.haplotag
     reference            = cooper.ref
     snp_qual_cutoff      = cooper.args.snp_qual
     cooper_sorted_snps   = cooper.cooper_sorted_snps
@@ -81,7 +80,7 @@ def parse_cstag(cooper, read):
 
             match_len = 1
             update_snps(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
-                        snp_qual_cutoff, haploid, is_haplotag, read, rpos, qpos, insert_positions, False)
+                        snp_qual_cutoff, haploid, read, rpos, qpos, insert_positions, False)
             # update_snps(cooper, read, rpos, qpos, insert_positions, False)
 
             qpos += match_len; rpos += match_len

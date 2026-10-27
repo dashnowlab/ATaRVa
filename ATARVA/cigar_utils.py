@@ -76,7 +76,6 @@ def parse_cigar(cooper, read):
     haploid              = cooper.haploid
     snp_data             = cooper.cooper_snp_data
     cooper_prev_reads    = cooper.prev_reads
-    is_haplotag          = cooper.args.haplotag
     reference            = cooper.ref
     snp_qual_cutoff      = cooper.args.snp_qual
     cooper_sorted_snps   = cooper.cooper_sorted_snps
@@ -134,7 +133,7 @@ def parse_cigar(cooper, read):
 
         elif cigar[0] == 0: # match (includes substitutions)
             match_len = cigar[1]
-            if (not has_MD) and (not haploid) and (not is_haplotag):
+            if (not has_MD) and (not haploid):
                 ref_sequence   = reference.fetch(chrom, rpos, rpos + match_len)
                 query_sequence = qseq[qpos:qpos + match_len]
                 checker = make_checker(read.loci)
@@ -175,7 +174,7 @@ def parse_cigar(cooper, read):
             has_subop = True
             match_len = cigar[1]
             checker = make_checker(read.loci)
-            if (not haploid) and checker(rpos) and (not is_haplotag):
+            if (not haploid) and checker(rpos):
                 sub_nuc  = qseq[qpos]
                 sub_qual = qquals[qpos]
                 if sub_qual >= snp_qual_cutoff:
@@ -199,7 +198,7 @@ def parse_cigar(cooper, read):
             if read.cigartuples[0][0] == 4: qpos = read.cigartuples[0][1]
             else: qpos = 0
             parse_mdtag(cooper_snp_data, cooper_sorted_snps, cooper_loci_keys, cooper_loci_info, cooper_read_data, cooper_prev_reads,
-                        snp_qual_cutoff, haploid, is_haplotag, read, qpos, insert_positions)
+                        snp_qual_cutoff, haploid, read, qpos, insert_positions)
 
     num_read_loci = len(read.loci_coords)
     for idx, locus_key in enumerate(read.loci_keys):
