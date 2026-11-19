@@ -6,6 +6,7 @@
 * Removed locus mode. Splitting the catalog to exclude large regions without repeats consequently skipping reads in those regions.
 * Added a `--gvcf` option to output a gVCF file with all repeat loci as in the input catalog.
 * Filtering out outliers using HDBSCAN in non-amplicon mode before generating the consensus sequence.
+* Fixed output for the `--methviz` tag.
 
 ### v0.9.4
 * Fixed read contribution thresholds for each haplogroup to match with ATaRVA v0.7.1.
