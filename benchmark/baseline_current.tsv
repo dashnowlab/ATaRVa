@@ -1,0 +1,20 @@
+# Accepted baseline for benchmark/scripts/07_check_regression.py, catalog random_2to6bp_with_extremes. A CI run's benchmark/data/latest_metrics.tsv is compared against this file; a guarded metric dropping by more than --tolerance fails the job.
+#
+# Regenerate with --update-baseline, and only after confirming a drop is a legitimate
+# tradeoff, not a bug -- say why in the commit message, since this is what every later
+# ATaRVa change is judged against.
+tech	source	metric	value
+ont	aardvark_basepair	BASEPAIR/f1	0.783124
+ont	aardvark_basepair	BASEPAIR/precision	0.920876
+ont	aardvark_basepair	BASEPAIR/recall	0.681222
+ont	strts_native	ExactMatch/2to6bp_motifs	46.900000
+ont	strts_native	ExactMatch/ALL	44.481605
+ont	strts_native	LengthMatch_within_1_unit/2to6bp_motifs	85.400000
+ont	strts_native	LengthMatch_within_1_unit/ALL	80.936455
+pacbio	aardvark_basepair	BASEPAIR/f1	0.791573
+pacbio	aardvark_basepair	BASEPAIR/precision	0.943397
+pacbio	aardvark_basepair	BASEPAIR/recall	0.681842
+pacbio	strts_native	ExactMatch/2to6bp_motifs	85.400000
+pacbio	strts_native	ExactMatch/ALL	84.113712
+pacbio	strts_native	LengthMatch_within_1_unit/2to6bp_motifs	95.100000
+pacbio	strts_native	LengthMatch_within_1_unit/ALL	95.150502
