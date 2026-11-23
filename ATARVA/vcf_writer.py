@@ -371,7 +371,6 @@ def write_heterozygous_call(cooper, locus_key):
         PS = list(set(locus_data.read_haplotag_ps.values())) if locus_data.read_haplotag_ps is not None else '.'
         if PS != '.':
             PS = PS[0]
-        SAMPLE += f':{PS}'
     SAMPLE = (
             f'{GT}'
             f':{length_GT}'
